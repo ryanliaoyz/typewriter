@@ -1,0 +1,47 @@
+She go to the office every morning.
+
+I have went there three times already.
+
+Neither of the answers are correct.
+
+He explained me how the system works.
+
+I've been living here since three years.
+
+The results of the experiment suggests that our hypothesis was wrong.
+
+The software is designed to process large amount of data efficiently.
+
+There is several reasons why this approach fails.
+
+At this point in time, we are unable to determine the cause.
+
+Due to the fact that the server was unavailable, the request failed.
+
+The application has the ability to process several requests concurrently.
+
+In order to reduce latency, we cached the results locally.
+
+The reason why the deployment failed is because the configuration file was missing.
+
+It is important to note that the values shown below are only estimates.
+
+The two systems are exactly identical in their behavior.
+
+We made the decision to postpone the migration until next week.
+
+I don't think there is anything wrong with this sentence.
+
+Although the implementation is somewhat unconventional, it is nevertheless correct.
+
+The result is approximately equal to the analytical solution.
+
+The model utilizes a sparse representation to reduce memory consumption.
+
+The algorithm converges monotonically under the stated assumptions.
+
+The seemingly redundant check is necessary because the operation is not idempotent.
+
+The results were, in a sense, surprising but not entirely unexpected.
+
+For reasons that will become clear later, we retain the original representation.

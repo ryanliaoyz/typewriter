@@ -1,0 +1,56 @@
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 1587.25it/s]
+==========
+She goes to the office every morning.
+
+I have been there three times already.
+
+Neither answer is correct.
+
+He explained how the system works.
+
+I've been living here for three years.
+
+The results of the experiment suggest that our hypothesis was wrong.
+
+The software is designed to process large amounts of data efficiently.
+
+There are several reasons why this approach fails.
+
+At this point, we are unable to determine the cause.
+
+Because the server was unavailable, the request failed.
+
+The application can process several requests concurrently.
+
+To reduce latency, we cached the results locally.
+
+The deployment failed because the configuration file was missing.
+
+Note that the values shown below are only estimates.
+
+The two systems are exactly identical in their behavior.
+
+We decided to postpone the migration until next week.
+
+I don't think there is anything wrong with this sentence.
+
+Although the implementation is somewhat unconventional, it is correct.
+
+The result is approximately equal to the analytical solution.
+
+The model utilizes a sparse representation to reduce memory consumption.
+
+The algorithm converges monotonically under the stated assumptions.
+
+The seemingly redundant check is necessary because the operation is not idempotent.
+
+The results were, in a sense, surprising but not entirely unexpected.
+
+For reasons that will become clear later, we retain the original representation. 
+
+
+<end_of_turn>
+==========
+Prompt: 469 tokens, 95.933 tokens-per-sec
+Generation: 275 tokens, 10.444 tokens-per-sec
+Peak memory: 5.836 GB

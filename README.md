@@ -39,25 +39,21 @@ The inspector is absent from production builds.
 
 ## Model server setup
 
-The target model is **Gemma 2 9B Q4_K_M GGUF**, served by `llama.cpp`.
-Install `llama-server` and obtain compatible model weights separately; neither is
-included in this repository. Then run:
+The planned v1 runtime is **[Ollama](https://ollama.com/download)** on Linux,
+macOS, and Windows. Install it separately and obtain a model through Ollama;
+neither the runtime nor model weights are included in this repository. Its default
+local address is `http://127.0.0.1:11434`. Keep it bound to loopback unless you
+deliberately configure secure remote access.
 
-```sh
-llama-server \
-  -m /path/to/gemma-2-9b-Q4_K_M.gguf \
-  --host 127.0.0.1 \
-  --port 8080
-```
+**Frontend integration is not implemented.** Running Ollama does not enable
+checking in the editor. The planned client will use `/v1/chat/completions`, a
+configurable server URL and model name, the instructions in
+[`prompt.txt`](prompt.txt), and a development proxy for browser CORS. Responses
+will contain only corrected text, never model-generated offsets.
 
-Replace the model path and adjust hardware-specific flags for your machine. Keep
-the server bound to loopback unless you deliberately configure secure remote
-access.
-
-**Frontend integration is not implemented.** Starting the server does not enable
-checking in the editor. The planned client will use `/v1/chat/completions`, the
-instructions in [`prompt.txt`](prompt.txt), and a development proxy for browser
-CORS. Responses will contain only corrected text, never model-generated offsets.
+**Gemma 2 9B Q4_K_M** remains the target model pending evaluation with Ollama;
+model-specific setup commands will be documented when validated. `llama-server`
+is deferred to a later version as an alternative runtime, not supported in v1.
 
 ## Current architecture
 
@@ -77,7 +73,7 @@ UTF-16 ranges; duplicate sentences have independent identities. The cache retain
 results only for unchanged occurrence versions, and pending queue work is separate
 from cached results. Model responses must never silently replace editor text.
 
-The remaining integration will connect the queue to `llama-server`, validate
+The remaining integration will connect the queue to Ollama, validate
 responses against current sentence versions, expose errors and retries, and add
 user-controlled suggestions. V1 needs no Python service, database, Redis, or
 worker system.

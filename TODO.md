@@ -8,7 +8,8 @@
 - [x] Retain clean records; invalidate results only when sentence text changes.
 - [x] Add a 400 ms debounce and a deduplicated queue with concurrency = 1.
 - [x] Streamline the README and move module details to `docs/architecture.md`.
-- [ ] Integrate `llama-server` using `prompt.txt` and a development proxy.
+- [x] Document Ollama as the cross-platform v1 runtime; defer `llama-server` support.
+- [ ] Integrate Ollama on Linux, macOS, and Windows using `prompt.txt`, a configurable model/server URL, and a development proxy.
 - [ ] Discard stale responses; expose failures with a retry action.
 - [ ] Highlight sentences with suggestions and show original/corrected text.
 - [ ] Implement version-safe accept and per-version reject actions.
@@ -17,4 +18,5 @@
 
 ## Later
 
+- [ ] Add and test `llama-server` as an alternative runtime in a later version.
 - [ ] Add deterministic word-level diffs and finer highlights.

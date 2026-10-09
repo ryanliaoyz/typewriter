@@ -214,17 +214,31 @@ For manual validation:
 ## Planned model integration and suggestion review
 
 ```text
-Editor sentence state → sequential queue → HTTP client → llama-server
-                                                        └── Gemma 2 9B Q4_K_M
+Editor sentence state → sequential queue → HTTP client → Ollama
+                                                        └── configured model
         ↑                                    │
         └── version-checked result cache ←───┘
               └── highlights → accept / reject
 ```
 
-The HTTP client and development proxy are not implemented. See the
-[model server setup](../README.md#model-server-setup) for the standalone launch
-command. V1 uses `llama-server` directly, without a Python service, database,
-Redis, or worker system.
+The HTTP client and development proxy are not implemented. V1 will use Ollama
+directly on Linux, macOS, and Windows, without a Python service, database, Redis,
+or worker system. See the [model server setup](../README.md#model-server-setup)
+for the planned runtime and setup status.
+
+The planned client will use Ollama's OpenAI-compatible `/v1/chat/completions`
+endpoint, with a configurable server URL and model name. Ollama's default local
+address is `http://127.0.0.1:11434`; a development proxy will forward browser
+requests to it. Keep the HTTP client separate from the editor and queue, and do
+not couple them to Ollama-specific model-management APIs. Runtime installation
+and hardware acceleration differ across platforms; cross-platform support does
+not promise identical performance.
+
+Gemma 2 9B Q4_K_M remains the target model pending evaluation with Ollama; choosing
+the runtime does not establish model availability or correction quality.
+`llama-server` is a planned alternative for a later version, not a supported v1
+runtime. Its shared chat API may allow client reuse, but compatibility and setup
+must be implemented and tested before support is claimed.
 
 For each request, capture the sentence ID, version, and input text. Send the
 sentence with the instruction in [`prompt.txt`](../prompt.txt) and request only

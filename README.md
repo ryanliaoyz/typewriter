@@ -6,10 +6,11 @@ with a local language model, and accept or reject suggested corrections.
 ## Current status
 
 The React + TypeScript + Vite scaffold, test tooling, plain-text editor, sentence
-segmentation, and versioned sentence-occurrence reconciliation are implemented.
-Canonical document text and edit ranges live in a pure state module; the editor
-derives sentence records on each update. Checking-result caching, the request
-queue, and server integration are **planned, not implemented**.
+segmentation, versioned sentence-occurrence reconciliation, and pure-state result
+caching are implemented. Canonical document text and edit ranges live in a pure
+state module; the editor derives sentence records on each update. The request
+queue and server integration are **planned, not implemented**. The cache can store
+successful results, but the editor does not produce checks or suggestions yet.
 
 Write or paste into the editor; drafts live only in the current page session and
 are lost on reload. No text is sent to a model server yet.
@@ -46,7 +47,8 @@ cleanup between tests. Pure-state tests can select Node with a
 `// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
 the validated Node version. Current tests cover pure document transitions,
 sentence segmentation and completion, sentence IDs/versioning/reconciliation,
-and editor component wiring; future inference tests should mock the server.
+result retention/invalidation, and editor component wiring; future inference
+tests should mock the server.
 
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
 There is no inference client or development proxy yet.
@@ -56,9 +58,10 @@ There is no inference client or development proxy yet.
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
 live state used by the textarea. The read-only panel shows document length in
 UTF-16 units, sentence/completion counts, and each sentence's ID, version, current
-end-exclusive range, JSON-escaped text, completion flag, and status. All statuses
-are currently `idle`; completion means eligible for future scheduling, not a
-grammar-check result.
+end-exclusive range, JSON-escaped text, completion flag, and status. Normal editor
+use still produces only `idle` records because checking is not wired up. The panel
+also supports cached `clean` and `suggestion` states; suggestions appear in raw
+JSON. Completion means eligible for future scheduling, not a grammar-check result.
 
 The latest inferred edit references the **previous** document's range; it is not
 an edit history. Expand **Raw state JSON** to see the entire state, including
@@ -144,7 +147,7 @@ pure transition. The textarea uses these functions for every change. State has
 contains the segment's `start`, `end`, `text`, and `complete` fields plus:
 
 ```ts
-{ id: string, version: number, status: 'idle' }
+{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' }
 ```
 
 - New occurrences start at version 1 with independent IDs, including duplicates.
@@ -170,8 +173,43 @@ removing an identical duplicate can be indistinguishable from editing a differen
 occurrence. Multiple non-whitespace edits in one snapshot form one replacement;
 unchanged sentences inside an ambiguous many-to-many neighborhood may also receive
 fresh IDs. The module deliberately avoids matching arbitrary occurrences solely
-by sentence strings. It currently stores only idle records: clean-result caching,
-suggestions, rejection state, and scheduling remain separate TODOs.
+by sentence strings. Result retention follows these occurrence identities, as
+described below; an ambiguous neighborhood does not transfer results to fresh IDs
+even if some sentence strings happen to remain unchanged.
+
+### Sentence result cache (implemented)
+
+The cache lives in the current sentence records, not a separate map keyed by text
+or a history of old versions. `cacheSentenceResult(state, checked, result)` is a
+pure transition in `src/document/sentences.ts`. `checked` captures the occurrence's
+`id`, `version`, and input `text`; `result` is an already classified successful
+result:
+
+```ts
+{ status: 'clean' }
+// or
+{ status: 'suggestion', suggestion: 'Corrected sentence.' }
+```
+
+Only suggestion records carry corrected text. A clean record remains lightweight
+and marks that occurrence/version as checked without storing a redundant response.
+Caching leaves canonical text, document whitespace, the latest edit, IDs, and
+versions untouched. It uses current offsets and ignores a target whose ID,
+version, or input text no longer matches. Different occurrences of identical text
+can have independent results.
+
+Reconciliation preserves results on unchanged input, offset shifts, and changes
+to surrounding whitespace. A one-to-one content edit keeps the ID but increments
+the version, resets status to `idle`, and removes any suggestion. Internal
+whitespace, punctuation, and edits that make a sentence incomplete count as
+content changes. Reverting to previously checked text does not restore a result.
+Deletion retires the record; split, merge, and ambiguous replacement records start
+unchecked with fresh IDs while untouched anchors retain their results.
+
+There is no queue, request lifecycle, response validation, error/retry state,
+highlighting, or accept/reject action yet. Future inference code must validate and
+classify successful responses before caching them; failures are not clean results.
+End-to-end stale-response handling remains part of that integration.
 
 ## Planned architecture
 

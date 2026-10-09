@@ -18,7 +18,11 @@ export default function DebugInspector({ state }: { state: SentenceDocumentState
         Ranges use UTF-16 units and are end-exclusive: [start, end). Sentence ranges refer to
         the current document. Text is JSON-escaped to expose whitespace.
       </p>
-      <p>Complete means eligible for future scheduling, not checked or grammatically correct. All statuses are currently idle.</p>
+      <p>
+        Complete means eligible for future scheduling, not checked or grammatically correct.
+        Idle means unchecked; clean means checked without a correction; suggestion means a
+        correction is cached. No model checks are run yet.
+      </p>
       {state.sentences.length === 0 ? (
         <p>No sentence records.</p>
       ) : (

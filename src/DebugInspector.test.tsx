@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import DebugInspector from './DebugInspector'
-import { createSentenceDocument, updateSentenceDocument } from './document/sentences'
+import { cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from './document/sentences'
 
 describe('DebugInspector', () => {
   it('starts collapsed and shows empty state without changing the document', () => {
@@ -56,5 +56,21 @@ describe('DebugInspector', () => {
 
     expect(screen.getByText('"<b>Not markup</b>."')).toBeInTheDocument()
     expect(container.querySelector('b')).toBeNull()
+  })
+
+  it('shows cached statuses and suggestions in raw state without editing text', () => {
+    let state = createSentenceDocument('First. They works.')
+    state = cacheSentenceResult(state, state.sentences[0], { status: 'clean' })
+    state = cacheSentenceResult(state, state.sentences[1], {
+      status: 'suggestion', suggestion: 'They work.',
+    })
+    const { container } = render(<DebugInspector state={state} />)
+    const table = screen.getByRole('table', { name: 'Current sentence records', hidden: true })
+
+    expect(within(table).getByText('clean')).toBeInTheDocument()
+    expect(within(table).getByText('suggestion')).toBeInTheDocument()
+    expect(within(table).getByText('"They works."')).toBeInTheDocument()
+    expect(container.querySelector('pre')?.textContent).toBe(JSON.stringify(state, null, 2))
+    expect(state.document.text).toBe('First. They works.')
   })
 })

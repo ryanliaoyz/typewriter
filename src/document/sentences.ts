@@ -3,12 +3,15 @@ import type { DocumentEdit, DocumentState } from './document'
 import { segmentSentences } from './segmentation'
 import type { SentenceSegment } from './segmentation'
 
+/** Successful results only; scheduling and failures are separate concerns. */
+export type SentenceCheckResult =
+  | { readonly status: 'clean', readonly suggestion?: never }
+  | { readonly status: 'suggestion', readonly suggestion: string }
+
 export type SentenceRecord = SentenceSegment & {
   readonly id: string
   readonly version: number
-  /** Checking and result states will be added with the sentence cache. */
-  readonly status: 'idle'
-}
+} & (SentenceCheckResult | { readonly status: 'idle', readonly suggestion?: never })
 
 export type SentenceDocumentState = {
   readonly document: DocumentState
@@ -32,6 +35,25 @@ export function createSentenceDocument(text = ''): SentenceDocumentState {
     sentences: segments.map((segment, index) => createRecord(segment, index + 1)),
     nextSentenceId: segments.length + 1,
   }
+}
+
+/** Cache a classified successful result without changing canonical document text. */
+export function cacheSentenceResult(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+  result: SentenceCheckResult,
+): SentenceDocumentState {
+  const index = previous.sentences.findIndex((record) => record.id === checked.id)
+  const record = previous.sentences[index]
+  if (!record || record.version !== checked.version || record.text !== checked.text) {
+    return previous
+  }
+
+  // Build from current occurrence data, not captured offsets or previous results.
+  const { id, version, start, end, text, complete } = record
+  const sentences = [...previous.sentences]
+  sentences[index] = { id, version, start, end, text, complete, ...result }
+  return { ...previous, sentences }
 }
 
 /** Map untouched content only. Native segmentation can still change its boundaries. */
@@ -100,10 +122,11 @@ export function updateSentenceDocument(
     if (oldEnd - oldCursor === 1 && newEnd - newCursor === 1) {
       const record = previous.sentences[oldCursor]
       const segment = segments[newCursor]
-      sentences.push({
-        ...record,
+      sentences.push(record.text === segment.text ? moveRecord(record, segment) : {
         ...segment,
-        version: record.version + (record.text === segment.text ? 0 : 1),
+        id: record.id,
+        version: record.version + 1,
+        status: 'idle',
       })
     } else {
       for (let index = newCursor; index < newEnd; index += 1) {

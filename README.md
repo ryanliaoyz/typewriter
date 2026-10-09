@@ -5,10 +5,11 @@ with a local language model, and accept or reject suggested corrections.
 
 ## Current status
 
-The React + TypeScript + Vite scaffold, test tooling, and plain-text editor are
-implemented. Canonical document text and edit ranges live in a pure state module.
-Sentence segmentation, the sentence-state cache, request queue, and server
-integration are **planned, not implemented**.
+The React + TypeScript + Vite scaffold, test tooling, plain-text editor, and pure
+sentence-segmentation module are implemented. Canonical document text and edit
+ranges live in a pure state module. Segmentation is not wired into the editor yet;
+the sentence-state cache, request queue, and server integration are **planned,
+not implemented**.
 
 Write or paste into the editor; drafts live only in the current page session and
 are lost on reload. No text is sent to a model server yet.
@@ -43,8 +44,9 @@ Open the local URL printed by Vite (normally `http://localhost:5173`).
 Tests use Vitest, jsdom, React Testing Library, and jest-dom, with automatic DOM
 cleanup between tests. Pure-state tests can select Node with a
 `// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
-the validated Node version. Current tests cover pure document transitions and
-editor component wiring; future inference tests should mock the server.
+the validated Node version. Current tests cover pure document transitions,
+sentence segmentation and completion, and editor component wiring; future
+inference tests should mock the server.
 
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
 There is no inference client or development proxy yet.
@@ -70,6 +72,39 @@ from a browser edit operation. Equivalent edits within repeated text can be
 ambiguous; multiple changed portions are enclosed in a single replacement.
 Only the latest transition is retained, not an edit history. Sentence identity
 and reconciliation are not implemented yet.
+
+### Sentence segmentation (implemented)
+
+`src/document/segmentation.ts` is independent of React and the DOM. It requires
+native `Intl.Segmenter` support (no punctuation-only fallback) and uses
+`Intl.Segmenter('en', { granularity: 'sentence' })`. `segmentSentences(text)`
+returns occurrences shaped like:
+
+```ts
+{ start: number, end: number, text: string, complete: boolean }
+```
+
+Each `[start, end)` range uses UTF-16 code units and exactly addresses its `text`
+in the canonical document. Surrounding whitespace is excluded from content
+ranges; whitespace-only segments are omitted. Whitespace remains untouched in
+the document, including gaps between sentences. Internal whitespace and Unicode
+are not normalized. Duplicate sentences produce separate ranges, not stable IDs.
+
+Completion is a separate, conservative scheduling policy, exposed as
+`isSentenceComplete(text)`:
+
+- Require at least one Unicode letter or number and a final `.`, `?`, or `!`.
+- Allow closing quotes or brackets after the terminal punctuation.
+- Leave trailing ellipses (`..`, `...`, or `…`) incomplete, including before
+  closing quotes or brackets.
+- Whitespace, newlines, and native segment boundaries alone do not complete text.
+  A punctuated final sentence needs no trailing whitespace.
+
+Native boundaries are not repaired: abbreviations may split unexpectedly (for
+example, some runtimes split after `Dr.`), and a terminal abbreviation may be
+marked complete. ICU versions can differ. This policy is not linguistic certainty
+and currently targets English prose with ASCII sentence-ending punctuation.
+The module does not schedule checks, assign identities, or modify editor state.
 
 ## Planned architecture
 
@@ -122,14 +157,14 @@ are not checked again after unrelated edits. The queue is separate and transient
 
 ### Segmentation and scheduling
 
-- Segment with `Intl.Segmenter("en", { granularity: "sentence" })`.
+- Use the implemented segmentation and completion policy described above.
 - Schedule completed sentences after approximately **400 ms** without an edit.
 - Keep only the latest pending version of each sentence.
 - Process checks sequentially: **concurrency = 1**.
 
-Segmentation is not completion detection. `Intl.Segmenter` returns unfinished
-trailing text too, and abbreviations can still be ambiguous. V1 needs an explicit
-completion policy instead of sending every segment or firing on every period.
+Segmentation is not completion detection. The implemented module retains
+unfinished segments with `complete: false`; future scheduling must use that flag
+instead of sending every segment or firing on every period.
 
 ### Checking and stale responses
 

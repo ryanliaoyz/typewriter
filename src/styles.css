@@ -19,3 +19,33 @@ main {
 h1 {
   line-height: 1.2;
 }
+
+label {
+  display: block;
+  margin-top: 2rem;
+  font-weight: 600;
+}
+
+#document-help {
+  margin: 0.5rem 0 1rem;
+  color: #555;
+}
+
+textarea {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 20rem;
+  padding: 1rem;
+  border: 1px solid #777;
+  border-radius: 0.5rem;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  resize: vertical;
+}
+
+textarea:focus-visible {
+  outline: 2px solid #2457a7;
+  outline-offset: 2px;
+}

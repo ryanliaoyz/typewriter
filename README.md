@@ -5,9 +5,13 @@ with a local language model, and accept or reject suggested corrections.
 
 ## Current status
 
-The React + TypeScript + Vite scaffold and test tooling are implemented. The app
-currently shows a placeholder page. The editor, sentence-state cache, request
-queue, and server integration are **planned, not implemented**.
+The React + TypeScript + Vite scaffold, test tooling, and plain-text editor are
+implemented. Canonical document text and edit ranges live in a pure state module.
+Sentence segmentation, the sentence-state cache, request queue, and server
+integration are **planned, not implemented**.
+
+Write or paste into the editor; drafts live only in the current page session and
+are lost on reload. No text is sent to a model server yet.
 
 | File | Purpose |
 | --- | --- |
@@ -39,11 +43,33 @@ Open the local URL printed by Vite (normally `http://localhost:5173`).
 Tests use Vitest, jsdom, React Testing Library, and jest-dom, with automatic DOM
 cleanup between tests. Pure-state tests can select Node with a
 `// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
-the validated Node version. The current smoke tests cover the placeholder page;
-future inference tests should mock the server.
+the validated Node version. Current tests cover pure document transitions and
+editor component wiring; future inference tests should mock the server.
 
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
-There is no editor, inference client, or development proxy yet.
+There is no inference client or development proxy yet.
+
+### Canonical document state (implemented)
+
+`src/document/document.ts` has no React or DOM dependencies. `createDocument`
+initializes `{ text, edit: null }`; `updateDocument(previous, text)` returns the
+new canonical text and one contiguous replacement:
+
+```ts
+{ start: number, end: number, insertedText: string }
+```
+
+`[start, end)` addresses the **previous** text in JavaScript UTF-16 code units,
+not Unicode code points. Applying that replacement reconstructs the new text.
+Unchanged input returns `edit: null`. Transitions do not mutate previous state,
+trim whitespace, or normalize Unicode; ranges avoid splitting intact surrogate
+pairs. The controlled textarea uses these transitions for every change.
+
+The range is inferred from the common prefix and suffix of two snapshots, not
+from a browser edit operation. Equivalent edits within repeated text can be
+ambiguous; multiple changed portions are enclosed in a single replacement.
+Only the latest transition is retained, not an edit history. Sentence identity
+and reconciliation are not implemented yet.
 
 ## Planned architecture
 

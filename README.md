@@ -11,14 +11,15 @@ accept or reject conservative corrections.
 - Sentences are segmented with `Intl.Segmenter` and tracked by occurrence ID and
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.
-- Pure-state result caching and a tested, 400 ms debounced queue support one check
-  at a time. The queue is **not connected to the editor**: no model requests,
-  grammar suggestions, or accept/reject controls are available yet.
+- Completed sentences go through a 400 ms debounced, sequential queue to Ollama
+  using `prompt.txt`. Results are cached without rewriting text; development JSON
+  shows suggestions. Failures stay unchecked; review/retry controls are not available yet.
 
 ## Quickstart
 
 Use Node.js **22.12+ on the 22.x line, 24.x, or 26+**, with npm. The project was
-validated with Node 22.14.0 and npm 11.6.2. No model server is needed to run it.
+validated with Node 22.14.0 and npm 11.6.2. Editing works without a model server;
+checking requires the setup below.
 
 ```sh
 npm install
@@ -39,21 +40,25 @@ The inspector is absent from production builds.
 
 ## Model server setup
 
-The planned v1 runtime is **[Ollama](https://ollama.com/download)** on Linux,
-macOS, and Windows. Install it separately and obtain a model through Ollama;
-neither the runtime nor model weights are included in this repository. Its default
-local address is `http://127.0.0.1:11434`. Keep it bound to loopback unless you
-deliberately configure secure remote access.
+1. Install **[Ollama](https://ollama.com/download)** separately: use its Linux
+   installer or the macOS/Windows application. Start the Linux service or open the
+   application; the default server is `http://127.0.0.1:11434`. Keep it on loopback.
+2. Use Ollama's pull command with the tag
+   **[`gemma2:9b-instruct-q4_K_M`](https://ollama.com/library/gemma2:9b-instruct-q4_K_M)**
+   to obtain the target model (about 5.8 GB). Weights are not included here.
+3. Optionally copy [`.env.example`](.env.example) to `.env.local` and set
+   `VITE_OLLAMA_MODEL` and `VITE_OLLAMA_SERVER_URL` (server base URL, **without `/v1`**).
+   Restart Vite after changes; rebuild for production. These are public settings,
+   not credentials. Completed sentence text is sent to the configured server.
 
-**Frontend integration is not implemented.** Running Ollama does not enable
-checking in the editor. The planned client will use `/v1/chat/completions`, a
-configurable server URL and model name, the instructions in
-[`prompt.txt`](prompt.txt), and a development proxy for browser CORS. Responses
-will contain only corrected text, never model-generated offsets.
+Development forwards `/ollama/v1/chat/completions` through Vite, avoiding browser
+CORS setup. Production and preview connect directly: Ollama must allow the page's
+origin via `OLLAMA_ORIGINS` if it is not already allowed. HTTPS pages need an HTTPS
+server. See [configuration and platform notes](docs/architecture.md#model-configuration-and-development-proxy).
 
-**Gemma 2 9B Q4_K_M** remains the target model pending evaluation with Ollama;
-model-specific setup commands will be documented when validated. `llama-server`
-is deferred to a later version as an alternative runtime, not supported in v1.
+Linux live API/proxy checking was validated with an already-installed `qwen3.5:9b`
+model, and loopback preview CORS was checked. The target Gemma model's correction
+quality and macOS/Windows integration remain unvalidated. `llama-server` is deferred.
 
 ## Current architecture
 
@@ -62,10 +67,8 @@ React textarea
   └── canonical document text + inferred edit range
         └── Intl.Segmenter + occurrence reconciliation
               └── versioned sentence records / result cache
-                    └── development-only state inspector
-
-Separate, tested module (not wired into the editor):
-  sentence state → 400 ms debounce → FIFO queue → one injected checker
+                    └── 400 ms debounce → FIFO queue → HTTP client → Ollama
+                          └── version-safe results → cache / development inspector
 ```
 
 Editor text is the source of truth. Sentence records are derived state with
@@ -73,13 +76,7 @@ UTF-16 ranges; duplicate sentences have independent identities. The cache retain
 results only for unchanged occurrence versions, and pending queue work is separate
 from cached results. Model responses must never silently replace editor text.
 
-The remaining integration will connect the queue to Ollama, validate
-responses against current sentence versions, expose errors and retries, and add
-user-controlled suggestions. V1 needs no Python service, database, Redis, or
-worker system.
+## Further reading
 
-See [architecture and module details](docs/architecture.md) for APIs, completion
-and reconciliation policies, queue behavior, testing, and planned integration.
-[`TODO.md`](TODO.md) tracks implementation work. [`tests.txt`](tests.txt) contains
-model-evaluation inputs; [`output.txt`](output.txt) is historical output, not an
-exact-output test oracle or a benchmark of the planned server setup.
+See [architecture and module details](docs/architecture.md) for data flow, testing,
+configuration, and remaining work. [`TODO.md`](TODO.md) tracks implementation.

@@ -7,7 +7,7 @@ export default function DebugInspector({ state }: { state: SentenceDocumentState
   return (
     <details className="debug-inspector">
       <summary>Debug state</summary>
-      <p>Read-only, live editor state. Development only; nothing is persisted or sent to a server.</p>
+      <p>Read-only, live editor state. Development only; nothing is persisted. Completed sentences are sent to the configured Ollama server.</p>
       <dl className="debug-counts">
         <div><dt>Document length (UTF-16 units)</dt><dd>{state.document.text.length}</dd></div>
         <div><dt>Sentences</dt><dd>{state.sentences.length}</dd></div>
@@ -19,9 +19,9 @@ export default function DebugInspector({ state }: { state: SentenceDocumentState
         the current document. Text is JSON-escaped to expose whitespace.
       </p>
       <p>
-        Complete means eligible for future scheduling, not checked or grammatically correct.
+        Complete means eligible for scheduling, not checked or grammatically correct.
         Idle means unchecked; clean means checked without a correction; suggestion means a
-        correction is cached. No model checks are run yet.
+        correction is cached. Failures remain idle; suggestions appear in raw state JSON.
       </p>
       {state.sentences.length === 0 ? (
         <p>No sentence records.</p>

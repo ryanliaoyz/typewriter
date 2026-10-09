@@ -5,6 +5,7 @@
     "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "types": ["node"],
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
@@ -15,5 +16,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vite.config.test.ts"]
 }

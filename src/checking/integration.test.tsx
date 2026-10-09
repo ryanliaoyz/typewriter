@@ -1,0 +1,164 @@
+import { StrictMode } from 'react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import App from '../App'
+import type { SentenceDocumentState } from '../document/sentences'
+
+function response(content: string) {
+  return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content } }] })
+}
+
+function deferred() {
+  let resolve!: (value: Response) => void
+  const promise = new Promise<Response>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+function readState(container: HTMLElement): SentenceDocumentState {
+  return JSON.parse(container.querySelector('pre')!.textContent!) as SentenceDocumentState
+}
+
+async function settle() {
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+}
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.stubEnv('DEV', true)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
+
+describe('editor → queue → Ollama integration', () => {
+  it.each([true, false])('uses configured model and the correct request URL (development: %s)', async (development) => {
+    vi.stubEnv('DEV', development)
+    vi.stubEnv('VITE_OLLAMA_MODEL', 'custom-model')
+    vi.stubEnv('VITE_OLLAMA_SERVER_URL', 'http://localhost:12345')
+    const fetch = vi.fn().mockResolvedValue(response('First.'))
+    vi.stubGlobal('fetch', fetch)
+    render(<App />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'First.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][0]).toBe(`${development ? '/ollama' : 'http://localhost:12345'}/v1/chat/completions`)
+    expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('custom-model')
+  })
+
+  it('debounces, sends duplicates separately, skips unfinished text, and caches without rewriting', async () => {
+    const first = deferred()
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(response('They work.'))
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<StrictMode><App /></StrictMode>)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    const text = '  They works.\n\nThey works.  Unfinished'
+    fireEvent.change(editor, { target: { value: text } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(399) })
+    expect(fetch).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    first.resolve(response('They works.'))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetch.mock.calls[0][1].body).messages[1].content).toBe('They works.')
+    expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean', 'suggestion', 'idle'])
+    expect(readState(container).sentences[1].suggestion).toBe('They work.')
+    expect(editor).toHaveValue(text)
+
+    fireEvent.change(editor, { target: { value: `\n${text}` } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(readState(container).sentences[1].status).toBe('suggestion')
+  })
+
+  it('discards an edited response and checks only the latest queued version', async () => {
+    const first = deferred()
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(response('They work!'))
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    fireEvent.change(editor, { target: { value: 'They works.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    fireEvent.change(editor, { target: { value: 'They work.' } })
+    fireEvent.change(editor, { target: { value: 'They work!' } })
+    first.resolve(response('They work.'))
+    await settle()
+    expect(readState(container).sentences[0]).toMatchObject({ version: 3, status: 'idle' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[1].content).toBe('They work!')
+    expect(readState(container).sentences[0]).toMatchObject({ version: 3, status: 'clean' })
+    expect(editor).toHaveValue('They work!')
+  })
+
+  it('ignores responses for deleted occurrences', async () => {
+    const first = deferred()
+    const fetch = vi.fn().mockReturnValue(first.promise)
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    fireEvent.change(editor, { target: { value: 'They works.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    fireEvent.change(editor, { target: { value: '' } })
+    first.resolve(response('They work.'))
+    await settle()
+    expect(readState(container).sentences).toEqual([])
+    expect(editor).toHaveValue('')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not show a server error for an occurrence deleted during inference', async () => {
+    const first = deferred()
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(first.promise))
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    fireEvent.change(editor, { target: { value: 'First.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    fireEvent.change(editor, { target: { value: '' } })
+    first.resolve(new Response('failure', { status: 500 }))
+    await settle()
+    expect(readState(container).sentences).toEqual([])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps failures unchecked, continues the queue, and does not automatically retry', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response('missing model', { status: 404 }))
+      .mockResolvedValueOnce(response('Next.'))
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    fireEvent.change(editor, { target: { value: 'First. Next.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    await settle()
+    expect(readState(container).sentences.map((record) => record.status)).toEqual(['idle', 'clean'])
+    expect(screen.getByRole('alert')).toHaveTextContent('HTTP 404')
+    fireEvent.change(editor, { target: { value: '  First. Next.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: 'Next.' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('aborts fetch on unmount and suppresses disposed results', async () => {
+    const first = deferred()
+    const fetch = vi.fn().mockReturnValue(first.promise)
+    vi.stubGlobal('fetch', fetch)
+    const { unmount } = render(<StrictMode><App /></StrictMode>)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'First.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    const signal = fetch.mock.calls[0][1].signal as AbortSignal
+    unmount()
+    expect(signal.aborted).toBe(true)
+    first.resolve(response('First.'))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

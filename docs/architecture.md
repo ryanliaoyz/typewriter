@@ -3,9 +3,9 @@
 [Back to the README](../README.md)
 
 Typewriter uses React + TypeScript + Vite. The editor, segmentation,
-reconciliation, result cache, and sequential queue are implemented. The queue is
-not wired into the editor; HTTP integration, response validation, error/retry UI,
-highlighting, and accept/reject actions remain planned.
+reconciliation, result cache, sequential queue, and Ollama HTTP integration are
+implemented. Basic response validation and version-safe caching are connected;
+dedicated retry controls, highlighting, and accept/reject actions remain planned.
 
 ## Canonical document state
 
@@ -133,10 +133,8 @@ content changes. Reverting to previously checked text does not restore a result.
 Deletion retires the record; split, merge, and ambiguous replacement records start
 unchecked with fresh IDs while untouched anchors retain their results.
 
-The editor does not produce checks or cached results yet. Future inference code
-must validate and classify successful responses before caching them; failures
-are not clean results. End-to-end stale-response handling remains part of that
-integration.
+The HTTP client validates and classifies responses before the editor-session
+module passes them to this cache. Failed requests never reach the cache.
 
 ## Debounced sequential queue
 
@@ -144,8 +142,8 @@ integration.
 HTTP. Create one queue per document session with
 `createSentenceQueue({ check, onResult, onError })`. The injected `check` receives
 only `{ id, version, text }` and returns a promise of an already classified
-`SentenceCheckResult`. No fake checker is installed in the editor and no server
-requests are made yet.
+`SentenceCheckResult`. The editor-session module injects the Ollama HTTP checker;
+unit tests inject a fake checker.
 
 - Feed every document or cache transition to `queue.update(state)`. Only complete,
   unchecked (`idle`) records are eligible; clean and suggestion records are skipped.
@@ -174,24 +172,137 @@ requests are made yet.
   checker; the active slot remains until settlement.
 
 Unit tests use fake timers and deferred promises, not a running model. HTTP client
-integration, editor wiring, response validation, and error/retry actions remain
+integration and editor wiring are described below; explicit retry actions remain
 separate work. Queue activity is not stored as `queued` or `checking` statuses in
 the current sentence records.
 
+## Model configuration and development proxy
+
+[`src/checking/config.ts`](../src/checking/config.ts) takes model/server settings
+and whether the app is running in development. It returns a model tag, server
+base URL, and the URL the browser should call. Defaults are
+`gemma2:9b-instruct-q4_K_M` and `http://127.0.0.1:11434`. Empty settings use defaults;
+surrounding whitespace and trailing URL slashes are removed. Server URLs must use
+HTTP(S), without credentials, query strings, or fragments. Do not append `/v1`.
+This module supplies the simple runtime boundary for invariant 8 in `AGENTS.md`.
+
+Copy [`.env.example`](../.env.example) to `.env.local` to set:
+
+```dotenv
+VITE_OLLAMA_SERVER_URL=http://127.0.0.1:11434
+VITE_OLLAMA_MODEL=gemma2:9b-instruct-q4_K_M
+```
+
+Vite reads these settings at startup/build time. Restart development after changes
+and rebuild production assets. `.env.local` is ignored by Git. Both values are
+public, included in browser builds; do not put credentials in them. A custom
+server/model may send prose off the machine, including if a cloud model is chosen.
+
+[`vite.config.ts`](../vite.config.ts) reads the same configuration and forwards
+development requests beginning with `/ollama` to the selected server, stripping
+that prefix. The browser sends `/ollama/v1/chat/completions`; the server receives
+`/v1/chat/completions`. The proxy changes the Host header to the target and avoids
+cross-origin browser requests. It only exists in development, not preview or a
+production static deployment. Its input is the environment and request path; its
+output is a forwarded request/response (runtime boundary, invariant 8).
+
+Production/preview call the configured server directly. Allow the page's exact
+origin with Ollama's `OLLAMA_ORIGINS` setting if necessary; do not use a wildcard
+or expose unauthenticated inference publicly. An HTTPS page cannot call an HTTP
+server because of mixed-content restrictions. Loopback addresses then refer to
+the browser's machine, not the machine hosting the frontend.
+
+For platform setup, install from [Ollama's downloads](https://ollama.com/download),
+pull `gemma2:9b-instruct-q4_K_M`, and start the runtime:
+
+```sh
+ollama pull gemma2:9b-instruct-q4_K_M
+ollama serve
+```
+
+These are upstream setup instructions, not a claim that Gemma was evaluated here.
+Do not start a second server when the Ollama app/service is already running.
+Linux's installer normally creates a service; macOS and Windows run the desktop
+application. Ollama's [environment configuration guide](https://docs.ollama.com/faq#how-do-i-configure-ollama-server)
+describes Linux systemd settings, macOS `launchctl`, and Windows user environment
+variables. Restart the service/application after CORS changes. Hardware support
+and performance vary; no installation or service configuration is managed by the
+frontend. The target tag is listed upstream as 9B Q4_K_M (approximately 5.8 GB).
+
+Validation so far: Linux live chat through Vite using an installed `qwen3.5:9b`
+model, plus a successful CORS preflight from `http://127.0.0.1:4173`. No Gemma
+download/evaluation, macOS, or Windows live validation has been performed.
+
+## Ollama HTTP client
+
+[`src/checking/ollama.ts`](../src/checking/ollama.ts) consumes a model tag, request
+base URL, optional session cancellation signal, and a captured sentence. It
+produces a successful `clean`/`suggestion` result or rejects with an error. It has
+no React, queue, or document-state dependencies beyond shared types (invariants
+8 and 10).
+
+`createOllamaChecker` sends a non-streaming POST to `/v1/chat/completions`, with
+the exact contents of [`prompt.txt`](../prompt.txt) imported as a raw system
+message and the sentence as the user message. IDs, versions, document whitespace,
+and offsets are not sent. Temperature is 0 and the response limit is 1024 tokens.
+No API key, model-management API, or Python service is needed.
+
+The client requires one assistant choice with `finish_reason: 'stop'`, nonempty
+text containing a letter/number, and no error, tool call, refusal, or code fence.
+Truncated responses, invalid JSON, failed HTTP status codes, and network failures
+reject rather than produce clean results. This checks the envelope and obvious
+unusable output, not grammar quality or every possible prompt violation; plausible
+but wrong corrections remain suggestions, never automatic edits. Only surrounding
+response whitespace is trimmed; internal whitespace and Unicode are preserved.
+Identical text is clean, otherwise the returned text is a suggestion.
+
+A 120-second timeout aborts a hung fetch so the queue can move on. Session disposal
+also aborts fetches; timers and cancellation listeners are cleaned up after each
+request. Edits do not abort the active request or release its slot early.
+
+## Editor session and checking lifecycle
+
+[`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) owns
+the canonical sentence-document state, one sequential queue, and the latest
+current failure notice. It consumes textarea edits and asynchronous client results,
+and produces state, an `updateText` action, and an optional error message for the
+UI (invariants 1, 4–6, and 10).
+
+Every edit reconciles state and immediately feeds it to the queue. A current-state
+reference is updated before publishing React state, so a model response always
+checks the latest document, including when React batches renders. Successful
+responses use `cacheSentenceResult` and feed the resulting cache state back into
+the queue without restarting the debounce. Stale results are discarded by the
+cache's ID/version/text guard. Error notices are also restricted to matching
+captures; they disappear when the failed occurrence changes or is deleted, not
+when only its offsets move. No failure is stored as clean. The notice currently
+shows only the latest matching failure, not a full per-sentence error list.
+
+The queue is created in a mount effect and disposed on unmount, with request
+cancellation. React Strict Mode's initial effect replay creates no extra requests:
+the first queue is disposed before its debounce can expire. Scheduling side effects
+are not placed inside React state updaters. Explicit retry actions and richer
+per-sentence error state remain the next TODO; currently users must fix setup and
+reload/re-paste a saved draft, or edit the failed sentence to trigger a new version.
+
 ## Editor and development inspector
 
-[`src/App.tsx`](../src/App.tsx) owns the sentence-document state and renders a
-controlled textarea. Drafts live only in the current page session. No persistence
-or network requests are implemented.
+[`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
+actions from `useSentenceEditor`, along with a basic failure notice. Drafts live
+only in the current page session; no persistence is implemented. It explains that
+completed sentences are sent to the configured server, that review controls are
+not available yet, and that writing is never replaced automatically (invariants
+1 and 9). Save drafts before reloading to retry setup failures.
 
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
 live state used by the textarea. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
 shows document length in UTF-16 units, sentence/completion counts, and each
 sentence's ID, version, current end-exclusive range, JSON-escaped text, completion
-flag, and status. Normal editor use produces only `idle` records because checking
-is not wired up. The panel also supports cached `clean` and `suggestion` states;
-suggestions appear in raw JSON. Completion means eligible for scheduling, not a
-grammar-check result.
+flag, and status. Complete sentences can become `clean` or `suggestion` after a
+successful check; failures remain `idle`. Suggestions appear in raw JSON, not
+review controls. Completion means eligible for scheduling, not a grammar-check
+result. This read-only view consumes session state without a separate cache or
+segmentation pipeline (invariants 1 and 2).
 
 The latest inferred edit references the **previous** document's range; it is not
 an edit history. Expand **Raw state JSON** to see the entire state, including
@@ -211,7 +322,7 @@ For manual validation:
    and newlines to inspect UTF-16 ranges and escaped whitespace.
 7. Delete all text: sentence records disappear while the ID counter remains.
 
-## Planned model integration and suggestion review
+## Connected model integration and planned suggestion review
 
 ```text
 Editor sentence state → sequential queue → HTTP client → Ollama
@@ -221,18 +332,11 @@ Editor sentence state → sequential queue → HTTP client → Ollama
               └── highlights → accept / reject
 ```
 
-The HTTP client and development proxy are not implemented. V1 will use Ollama
-directly on Linux, macOS, and Windows, without a Python service, database, Redis,
-or worker system. See the [model server setup](../README.md#model-server-setup)
-for the planned runtime and setup status.
-
-The planned client will use Ollama's OpenAI-compatible `/v1/chat/completions`
-endpoint, with a configurable server URL and model name. Ollama's default local
-address is `http://127.0.0.1:11434`; a development proxy will forward browser
-requests to it. Keep the HTTP client separate from the editor and queue, and do
-not couple them to Ollama-specific model-management APIs. Runtime installation
-and hardware acceleration differ across platforms; cross-platform support does
-not promise identical performance.
+The HTTP client and development proxy are connected as described above. The
+application uses Ollama directly without a Python service, database, Redis, or
+worker system. See the [model server setup](../README.md#model-server-setup) for
+platform validation limits. Highlighting and accept/reject controls in the diagram
+remain planned.
 
 Gemma 2 9B Q4_K_M remains the target model pending evaluation with Ollama; choosing
 the runtime does not establish model availability or correction quality.
@@ -247,10 +351,11 @@ model request. When the response arrives:
 
 1. Discard it if the sentence was deleted or its version/input changed.
 2. If the valid returned text matches the input, mark the record clean.
-3. Otherwise, store a suggestion and highlight the sentence.
+3. Otherwise, store a suggestion; highlighting remains planned.
 
-Server failures or unusable responses should offer a retry, not mark the sentence
-clean. Clicking a highlighted sentence will show its original and proposed text:
+Server failures or unusable responses remain unchecked and show a basic notice;
+dedicated retry controls are planned. Clicking a future highlighted sentence will
+show its original and proposed text:
 
 - **Accept:** verify the current version, replace only its current range, and
   reconcile the updated document.
@@ -278,9 +383,14 @@ support the validated Node version.
 Current tests cover pure document transitions, sentence segmentation and
 completion, sentence IDs/versioning/reconciliation, result retention/invalidation,
 debounced sequential queue behavior with a mocked checker, and editor/inspector
-component wiring. Future HTTP tests should mock the server. Prioritize stale
-responses, deletion during inference, suggestion actions after edits, server
-failures, unusable responses, and retries as integration is implemented.
+component wiring. HTTP tests mock fetch and cover the request prompt/payload,
+configuration, clean/suggestion classification, invalid/truncated responses,
+HTTP/network errors, invalid JSON, timeout, and cancellation. Editor integration
+tests mock fetch with fake timers and deferred responses to cover duplicate
+occurrences, incomplete text, shifted offsets, sequential execution, queued version
+replacement, edited/deleted stale results, failure continuation, and Strict Mode
+cleanup. None of these tests needs a running model. Suggestion actions and explicit
+retry tests will be added with their TODOs.
 
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
 conservative corrections may be valid; [`output.txt`](../output.txt) is historical

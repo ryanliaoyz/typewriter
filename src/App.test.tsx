@@ -1,10 +1,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as sentenceDocument from './document/sentences'
 import type { SentenceDocumentState } from './document/sentences'
 
+beforeEach(() => vi.useFakeTimers())
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
@@ -70,10 +73,11 @@ describe('App', () => {
     expect(reconcile.mock.calls[2][0]).toBe(inserted)
   })
 
-  it('makes clear that grammar checking is not available yet', () => {
+  it('explains model checking and the current lack of review controls', () => {
     render(<App />)
 
-    expect(screen.getByText(/Grammar checking is not available yet\./)).toBeInTheDocument()
+    expect(screen.getByText(/Completed sentences are checked/)).toBeInTheDocument()
+    expect(screen.getByText(/review controls are not available yet/)).toBeInTheDocument()
   })
 
   it('shows live canonical state in the development inspector through edits, splits, merges, and deletion', () => {

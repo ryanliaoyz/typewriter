@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as sentenceDocument from './document/sentences'
@@ -6,6 +6,7 @@ import type { SentenceDocumentState } from './document/sentences'
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 describe('App', () => {
@@ -73,5 +74,58 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByText(/Grammar checking is not available yet\./)).toBeInTheDocument()
+  })
+
+  it('shows live canonical state in the development inspector through edits, splits, merges, and deletion', () => {
+    vi.stubEnv('DEV', true)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+    let expected = sentenceDocument.createSentenceDocument()
+
+    for (const text of [
+      'First. Last.',
+      'First. Inserted. Last.',
+      'First. Inserted! Last.',
+      '  First. Inserted! Last.  ',
+      'Same. Same.',
+      'Same. Split. Same.',
+      'Same Split. Same.',
+      'Same Split. Same. Unfinished',
+      '',
+    ]) {
+      expected = sentenceDocument.updateSentenceDocument(expected, text)
+      fireEvent.change(editor, { target: { value: text } })
+
+      expect(container.querySelector('pre')?.textContent).toBe(JSON.stringify(expected, null, 2))
+      expect(editor).toHaveValue(text)
+      if (expected.sentences.length > 0) {
+        const table = screen.getByRole('table', { name: 'Current sentence records', hidden: true })
+        const rows = within(table).getAllByRole('row', { hidden: true }).slice(1)
+        expect(rows).toHaveLength(expected.sentences.length)
+        rows.forEach((row, index) => {
+          const record = expected.sentences[index]
+          expect(Array.from(row.children, (cell) => cell.textContent)).toEqual([
+            record.id, String(record.version), `[${record.start}, ${record.end})`,
+            JSON.stringify(record.text), String(record.complete), record.status,
+          ])
+        })
+      } else {
+        expect(screen.queryByRole('table', { hidden: true })).not.toBeInTheDocument()
+      }
+    }
+  })
+
+  it('omits the inspector outside development while keeping the editor functional', () => {
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('PROD', true)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+
+    fireEvent.change(editor, { target: { value: 'Still editable.' } })
+
+    expect(editor).toHaveValue('Still editable.')
+    expect(screen.queryByText('Debug state')).not.toBeInTheDocument()
+    expect(container.querySelector('.debug-inspector')).toBeNull()
+    expect(container.querySelector('pre')).toBeNull()
   })
 })

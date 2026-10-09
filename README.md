@@ -51,6 +51,34 @@ and editor component wiring; future inference tests should mock the server.
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
 There is no inference client or development proxy yet.
 
+### Development state inspector
+
+With `npm run dev`, expand **Debug state** below the editor to inspect the same
+live state used by the textarea. The read-only panel shows document length in
+UTF-16 units, sentence/completion counts, and each sentence's ID, version, current
+end-exclusive range, JSON-escaped text, completion flag, and status. All statuses
+are currently `idle`; completion means eligible for future scheduling, not a
+grammar-check result.
+
+The latest inferred edit references the **previous** document's range; it is not
+an edit history. Expand **Raw state JSON** to see the entire state, including
+canonical whitespace and the session-local ID counter. The inspector adds no
+persistence, network requests, or separate segmentation pipeline. It is gated by
+Vite's `import.meta.env.DEV` and is absent from production builds and
+`npm run preview`.
+
+For manual validation:
+
+1. Type `First. Last.` and note both IDs and versions.
+2. Insert `Inserted.` between them: existing IDs/versions stay while offsets move.
+3. Edit `Inserted.` to `Inserted!`: its ID stays and its version increases.
+4. Change only surrounding whitespace: sentence IDs/versions stay unchanged.
+5. Try `Same. Same.`: duplicates have independent IDs. Split or merge a sentence
+   and watch affected records receive fresh IDs.
+6. Append unfinished text: it appears with `complete: false`. Try emoji, tabs,
+   and newlines to inspect UTF-16 ranges and escaped whitespace.
+7. Delete all text: sentence records disappear while the ID counter remains.
+
 ### Canonical document state (implemented)
 
 `src/document/document.ts` has no React or DOM dependencies. `createDocument`

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DebugInspector from './DebugInspector'
 import { createSentenceDocument, updateSentenceDocument } from './document/sentences'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
         }}
         spellCheck={false}
       />
+      {import.meta.env.DEV && <DebugInspector state={state} />}
     </main>
   )
 }

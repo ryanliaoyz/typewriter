@@ -4,6 +4,7 @@
 - [x] Build a plain-text editor with canonical document state.
 - [x] Add `Intl.Segmenter` segmentation and a sentence-completion policy.
 - [x] Implement stable sentence IDs, versioning, and edit reconciliation.
+- [x] Add a development-only inspector for live document and sentence state.
 - [ ] Retain clean records; invalidate results only when sentence text changes.
 - [ ] Add a 400 ms debounce and a deduplicated queue with concurrency = 1.
 - [ ] Integrate `llama-server` using `prompt.txt` and a development proxy.

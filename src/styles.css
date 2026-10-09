@@ -49,3 +49,72 @@ textarea:focus-visible {
   outline: 2px solid #2457a7;
   outline-offset: 2px;
 }
+
+.debug-inspector {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid #aaa;
+  border-radius: 0.5rem;
+  background: #fff;
+  font-size: 0.875rem;
+}
+
+.debug-inspector summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.debug-inspector summary:focus-visible,
+.debug-table-scroll:focus-visible {
+  outline: 2px solid #2457a7;
+  outline-offset: 2px;
+}
+
+.debug-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+}
+
+.debug-inspector dt {
+  font-weight: 600;
+}
+
+.debug-inspector dd {
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.debug-table-scroll,
+.debug-inspector pre {
+  overflow-x: auto;
+}
+
+.debug-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.debug-inspector caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.debug-inspector th,
+.debug-inspector td {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  text-align: left;
+  vertical-align: top;
+}
+
+.debug-sentence-text {
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+}
+
+.debug-inspector pre {
+  padding: 0.75rem;
+  background: #f5f5f5;
+}

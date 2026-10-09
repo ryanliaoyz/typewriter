@@ -6,11 +6,13 @@ with a local language model, and accept or reject suggested corrections.
 ## Current status
 
 The React + TypeScript + Vite scaffold, test tooling, plain-text editor, sentence
-segmentation, versioned sentence-occurrence reconciliation, and pure-state result
-caching are implemented. Canonical document text and edit ranges live in a pure
-state module; the editor derives sentence records on each update. The request
-queue and server integration are **planned, not implemented**. The cache can store
-successful results, but the editor does not produce checks or suggestions yet.
+segmentation, versioned sentence-occurrence reconciliation, pure-state result
+caching, and a debounced sequential request queue are implemented. Canonical
+document text and edit ranges live in a pure state module; the editor derives
+sentence records on each update. The queue is tested with an injected checker but
+is **not wired into the editor**. Server integration is **planned, not implemented**.
+The cache can store successful results, but the editor does not produce checks or
+suggestions yet.
 
 Write or paste into the editor; drafts live only in the current page session and
 are lost on reload. No text is sent to a model server yet.
@@ -47,8 +49,8 @@ cleanup between tests. Pure-state tests can select Node with a
 `// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
 the validated Node version. Current tests cover pure document transitions,
 sentence segmentation and completion, sentence IDs/versioning/reconciliation,
-result retention/invalidation, and editor component wiring; future inference
-tests should mock the server.
+result retention/invalidation, debounced sequential queue behavior with a mocked
+checker, and editor component wiring; future HTTP tests should mock the server.
 
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
 There is no inference client or development proxy yet.
@@ -206,10 +208,48 @@ content changes. Reverting to previously checked text does not restore a result.
 Deletion retires the record; split, merge, and ambiguous replacement records start
 unchecked with fresh IDs while untouched anchors retain their results.
 
-There is no queue, request lifecycle, response validation, error/retry state,
+There is no editor request lifecycle, response validation, error/retry UI,
 highlighting, or accept/reject action yet. Future inference code must validate and
 classify successful responses before caching them; failures are not clean results.
 End-to-end stale-response handling remains part of that integration.
+
+### Debounced sequential queue (implemented, not yet connected)
+
+`src/checking/queue.ts` is independent of React and HTTP. Create one queue per
+document session with `createSentenceQueue({ check, onResult, onError })`. The
+injected `check` receives only `{ id, version, text }` and returns a promise of an
+already classified `SentenceCheckResult`. No fake checker is installed in the
+editor and no server requests are made yet.
+
+- Feed every document or cache transition to `queue.update(state)`. Only complete,
+  unchecked (`idle`) records are eligible; clean and suggestion records are skipped.
+- Actual document edits restart a **400 ms** document-wide debounce. Unchanged
+  input and cache-only updates do not restart it. Pending work is reconciled
+  immediately, even while waiting for the timer or an active check.
+- Pending entries are keyed by occurrence ID, including independent duplicates.
+  Updating a queued version replaces it without changing its FIFO position.
+  Deleted, incomplete, and checked records leave the queue; splits and merges use
+  the reconciler's new IDs. Newly eligible occurrences join the tail.
+- At most one checker is active. Editing or deleting its sentence does not release
+  that slot; new work waits until its promise settles and any edit debounce ends.
+  An edit to an active sentence queues only its latest eligible version.
+- Callbacks receive the captured identity/input. The owner must validate responses
+  against current state, using `cacheSentenceResult` for successful results, and
+  feed updated state back to the queue. The queue never modifies canonical text or
+  caches results itself; callbacks should not throw.
+- Errors go to `onError`, never become clean results, and do not block other work.
+  Current attempted versions are tracked to avoid duplicate requests and automatic
+  retry loops on unchanged idle records. This bookkeeping stores no results or
+  historical versions; an edit permits a new attempt. Explicit retry/error UI is
+  a later TODO.
+- `getSnapshot()` exposes pending captures, the active capture, and whether the
+  debounce timer is running. `dispose()` cancels the timer, clears pending work,
+  and suppresses callbacks and further scheduling. It does not cancel an active
+  checker; the active slot remains until settlement.
+
+Unit tests use fake timers and deferred promises, not a running model. HTTP client
+integration, editor wiring, response validation, and error/retry actions remain
+separate work.
 
 ## Planned architecture
 
@@ -262,14 +302,14 @@ are not checked again after unrelated edits. The queue is separate and transient
 
 ### Segmentation and scheduling
 
-- Use the implemented segmentation and completion policy described above.
+- Use the implemented segmentation, completion policy, and queue described above.
 - Schedule completed sentences after approximately **400 ms** without an edit.
 - Keep only the latest pending version of each sentence.
 - Process checks sequentially: **concurrency = 1**.
 
 Segmentation is not completion detection. The implemented module retains
-unfinished segments with `complete: false`; future scheduling must use that flag
-instead of sending every segment or firing on every period.
+unfinished segments with `complete: false`; the queue uses that flag instead of
+sending every segment or firing on every period.
 
 ### Checking and stale responses
 

@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import * as sentenceDocument from './document/sentences'
+import type { SentenceDocumentState } from './document/sentences'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('App', () => {
   it('renders the Typewriter heading', () => {
@@ -38,6 +44,29 @@ describe('App', () => {
 
     expect(editor).toHaveValue(text)
     expect(screen.queryByText('Not markup')).not.toBeInTheDocument()
+  })
+
+  it('reconciles sentence records with each canonical editor update', () => {
+    const reconcile = vi.spyOn(sentenceDocument, 'updateSentenceDocument')
+    render(<App />)
+    const editor = screen.getByRole('textbox', { name: 'Your writing' })
+
+    for (const text of ['First. Last.', 'First. Inserted. Last.', 'First. Inserted! Last.']) {
+      fireEvent.change(editor, { target: { value: text } })
+      expect(editor).toHaveValue(text)
+    }
+
+    expect(reconcile).toHaveBeenCalledTimes(3)
+    const first = reconcile.mock.results[0].value as SentenceDocumentState
+    const inserted = reconcile.mock.results[1].value as SentenceDocumentState
+    const edited = reconcile.mock.results[2].value as SentenceDocumentState
+    expect(inserted.sentences.map(({ id }) => id)).toEqual([
+      first.sentences[0].id, 'sentence-3', first.sentences[1].id,
+    ])
+    expect(edited.sentences[1]).toMatchObject({ id: 'sentence-3', version: 2 })
+    expect(edited.sentences[2]).toMatchObject({ id: first.sentences[1].id, version: 1 })
+    expect(reconcile.mock.calls[1][0]).toBe(first)
+    expect(reconcile.mock.calls[2][0]).toBe(inserted)
   })
 
   it('makes clear that grammar checking is not available yet', () => {

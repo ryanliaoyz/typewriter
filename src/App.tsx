@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { createDocument, updateDocument } from './document/document'
+import { createSentenceDocument, updateSentenceDocument } from './document/sentences'
 
 export default function App() {
-  const [document, setDocument] = useState(() => createDocument())
+  const [state, setState] = useState(() => createSentenceDocument())
 
   return (
     <main>
@@ -13,10 +13,10 @@ export default function App() {
       <textarea
         id="document"
         aria-describedby="document-help"
-        value={document.text}
+        value={state.document.text}
         onChange={(event) => {
           const text = event.currentTarget.value
-          setDocument((previous) => updateDocument(previous, text))
+          setState((previous) => updateSentenceDocument(previous, text))
         }}
         spellCheck={false}
       />

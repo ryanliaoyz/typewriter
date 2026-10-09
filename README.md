@@ -5,11 +5,11 @@ with a local language model, and accept or reject suggested corrections.
 
 ## Current status
 
-The React + TypeScript + Vite scaffold, test tooling, plain-text editor, and pure
-sentence-segmentation module are implemented. Canonical document text and edit
-ranges live in a pure state module. Segmentation is not wired into the editor yet;
-the sentence-state cache, request queue, and server integration are **planned,
-not implemented**.
+The React + TypeScript + Vite scaffold, test tooling, plain-text editor, sentence
+segmentation, and versioned sentence-occurrence reconciliation are implemented.
+Canonical document text and edit ranges live in a pure state module; the editor
+derives sentence records on each update. Checking-result caching, the request
+queue, and server integration are **planned, not implemented**.
 
 Write or paste into the editor; drafts live only in the current page session and
 are lost on reload. No text is sent to a model server yet.
@@ -45,8 +45,8 @@ Tests use Vitest, jsdom, React Testing Library, and jest-dom, with automatic DOM
 cleanup between tests. Pure-state tests can select Node with a
 `// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
 the validated Node version. Current tests cover pure document transitions,
-sentence segmentation and completion, and editor component wiring; future
-inference tests should mock the server.
+sentence segmentation and completion, sentence IDs/versioning/reconciliation,
+and editor component wiring; future inference tests should mock the server.
 
 Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
 There is no inference client or development proxy yet.
@@ -70,8 +70,8 @@ pairs. The controlled textarea uses these transitions for every change.
 The range is inferred from the common prefix and suffix of two snapshots, not
 from a browser edit operation. Equivalent edits within repeated text can be
 ambiguous; multiple changed portions are enclosed in a single replacement.
-Only the latest transition is retained, not an edit history. Sentence identity
-and reconciliation are not implemented yet.
+Only the latest transition is retained, not an edit history. The sentence-state
+module uses this transition for reconciliation, as described below.
 
 ### Sentence segmentation (implemented)
 
@@ -105,6 +105,45 @@ example, some runtimes split after `Dr.`), and a terminal abbreviation may be
 marked complete. ICU versions can differ. This policy is not linguistic certainty
 and currently targets English prose with ASCII sentence-ending punctuation.
 The module does not schedule checks, assign identities, or modify editor state.
+
+### Sentence occurrence reconciliation (implemented)
+
+`src/document/sentences.ts` is also independent of React and the DOM.
+`createSentenceDocument(text)` initializes canonical document state and derived
+sentence records; `updateSentenceDocument(previous, text)` updates both in one
+pure transition. The textarea uses these functions for every change. State has
+`document`, `sentences`, and a session-local `nextSentenceId` counter. Each record
+contains the segment's `start`, `end`, `text`, and `complete` fields plus:
+
+```ts
+{ id: string, version: number, status: 'idle' }
+```
+
+- New occurrences start at version 1 with independent IDs, including duplicates.
+  Deleted IDs are never reused during the document session.
+- Unchanged content ranges before/after the edit are mapped into the new document
+  and verified against native segmentation. These positional anchors retain IDs
+  and versions, even when offsets shift.
+- If all sentence content is unchanged in occurrence order, changes affect only
+  surrounding document whitespace; all IDs and versions are retained.
+- Between anchors, a one-to-one sentence edit retains its ID and increments its
+  version when content changes, including internal whitespace and completion
+  punctuation. Reverting text increments the version again.
+- Insertions get fresh IDs; deletions retire IDs. Splits, merges, and ambiguous
+  many-to-many replacements retire the affected IDs and create fresh records.
+- Unchanged input retains the sentence array and clears the document's edit range.
+
+Reconciliation never rewrites document text. It resegments the whole document for
+simplicity, keeping UTF-16 content ranges and the existing completion policy.
+The counter is part of immutable state, not a random or global allocator.
+
+Identity follows the **inferred edit**, not a browser edit operation: adding or
+removing an identical duplicate can be indistinguishable from editing a different
+occurrence. Multiple non-whitespace edits in one snapshot form one replacement;
+unchanged sentences inside an ambiguous many-to-many neighborhood may also receive
+fresh IDs. The module deliberately avoids matching arbitrary occurrences solely
+by sentence strings. It currently stores only idle records: clean-result caching,
+suggestions, rejection state, and scheduling remain separate TODOs.
 
 ## Planned architecture
 

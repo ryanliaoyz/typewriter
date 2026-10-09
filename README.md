@@ -5,9 +5,9 @@ with a local language model, and accept or reject suggested corrections.
 
 ## Current status
 
-This repository currently contains prompt and evaluation material. The editor,
-sentence-state cache, request queue, and server integration are **planned, not
-implemented**. There are no frontend install, development, or test commands yet.
+The React + TypeScript + Vite scaffold and test tooling are implemented. The app
+currently shows a placeholder page. The editor, sentence-state cache, request
+queue, and server integration are **planned, not implemented**.
 
 | File | Purpose |
 | --- | --- |
@@ -15,6 +15,35 @@ implemented**. There are no frontend install, development, or test commands yet.
 | `tests.txt` | Sample sentences with errors, verbal clutter, and valid prose |
 | `output.txt` | Historical model output and run statistics, not a golden test fixture |
 | `AGENTS.md` | Architecture constraints and guidance for coding agents |
+
+## Frontend development
+
+Use Node.js **22.12+ on the 22.x line, 24.x, or 26+**, with npm. The scaffold was
+validated with Node 22.14.0 and npm 11.6.2. No model server is needed to run it.
+
+```sh
+npm install
+npm run dev
+```
+
+Open the local URL printed by Vite (normally `http://localhost:5173`).
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Type-check application, tests, and configuration; build into `dist/` |
+| `npm run preview` | Serve the production build locally after building |
+| `npm test` | Run tests once |
+| `npm run test:watch` | Run tests in watch mode |
+
+Tests use Vitest, jsdom, React Testing Library, and jest-dom, with automatic DOM
+cleanup between tests. Pure-state tests can select Node with a
+`// @vitest-environment node` file comment. jsdom stays on the 26.x line to support
+the validated Node version. The current smoke tests cover the placeholder page;
+future inference tests should mock the server.
+
+Application code lives in `src/`; shared test setup is in `src/test/setup.ts`.
+There is no editor, inference client, or development proxy yet.
 
 ## Planned architecture
 

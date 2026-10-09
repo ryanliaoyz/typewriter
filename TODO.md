@@ -1,6 +1,6 @@
 # V1 TODO
 
-- [ ] Scaffold React + TypeScript + Vite with test tooling.
+- [x] Scaffold React + TypeScript + Vite with test tooling.
 - [ ] Build a plain-text editor with canonical document state.
 - [ ] Add `Intl.Segmenter` segmentation and a sentence-completion policy.
 - [ ] Implement stable sentence IDs, versioning, and edit reconciliation.

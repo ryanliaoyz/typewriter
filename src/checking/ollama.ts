@@ -75,6 +75,7 @@ export function createOllamaChecker({ model, serverUrl, signal }: OllamaOptions)
           stream: false,
           temperature: 0,
           max_tokens: 2048,
+          reasoning_effort: 'none',
         }),
       })
       if (!response.ok) throw new Error(`Ollama request failed (HTTP ${response.status}). Check the server and model name.`)

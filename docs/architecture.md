@@ -251,6 +251,11 @@ no React, queue, or document-state dependencies beyond shared types (invariants
 the exact contents of [`prompt.txt`](../prompt.txt) imported as a raw system
 message and the sentence as the user message. IDs, versions, document whitespace,
 and offsets are not sent. Temperature is 0 and the response limit is 2048 tokens.
+Requests set `reasoning_effort: 'none'` to disable thinking on supported models
+through Ollama's OpenAI-compatible API, leaving the token budget for corrected text.
+Live verification with local `qwen3.5:9b` returned a completed correction for the
+previously truncated prerequisites sentence in 36 output tokens, with no reasoning
+field and `finish_reason: 'stop'`.
 No API key, model-management API, or Python service is needed.
 
 The client requires one assistant choice with `finish_reason: 'stop'`, nonempty

@@ -27,6 +27,7 @@ describe('Ollama checker', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(JSON.parse(init.body)).toEqual({
       model: 'test-model', stream: false, temperature: 0, max_tokens: 2048,
+      reasoning_effort: 'none',
       messages: [
         { role: 'system', content: actualPrompt },
         { role: 'user', content: sentence.text },

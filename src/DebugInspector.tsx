@@ -1,9 +1,22 @@
 import type { SentenceDocumentState } from './document/sentences'
+import { useState } from 'react'
 import type { useSentenceEditor } from './checking/useSentenceEditor'
 
 type Props = {
   state: SentenceDocumentState
 } & Partial<Pick<ReturnType<typeof useSentenceEditor>, 'failures' | 'retry'>>
+
+function ResponseDetails({ details }: { details: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      {' '}<button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide response' : 'Show response'}
+      </button>
+      {open && <div className="debug-response"><code>{details}</code></div>}
+    </>
+  )
+}
 
 export default function DebugInspector({ state, failures = [], retry }: Props) {
   const completeCount = state.sentences.filter((sentence) => sentence.complete).length
@@ -14,11 +27,12 @@ export default function DebugInspector({ state, failures = [], retry }: Props) {
       <summary>Debug state</summary>
       <p>A local-first grammar editor, in development. Completed sentences are checked with your configured Ollama server.</p>
       <p>Compare suggestions below your draft. Accept and reject controls are coming next. Your writing is never automatically replaced.</p>
-      {failures.map(({ sentence, message }) => (
+      {failures.map(({ sentence, message, details }) => (
         <div role="alert" key={sentence.id}>
           <p>{sentence.text}</p>
           <p>{message} This sentence remains unchecked.</p>
           <button type="button" onClick={() => retry?.(sentence)}>Retry</button>
+          {details && <ResponseDetails key={`${sentence.id}:${sentence.version}`} details={details} />}
         </div>
       ))}
       <p>Live editor state. Development only; nothing is persisted.</p>

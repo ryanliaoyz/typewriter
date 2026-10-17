@@ -173,3 +173,11 @@ textarea:focus-visible {
   padding: 0.75rem;
   background: #f5f5f5;
 }
+
+.debug-response {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

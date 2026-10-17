@@ -4,6 +4,16 @@ import type { SentenceCheck } from './queue'
 
 export const REQUEST_TIMEOUT_MS = 120_000
 
+export class UnusableResponseError extends Error {
+  readonly details: string
+
+  constructor(value: unknown, reason: string) {
+    super('Ollama returned an unusable response; expected completed, corrected text.')
+    this.name = 'UnusableResponseError'
+    this.details = `${reason}\n\n${JSON.stringify(value, null, 2)}`
+  }
+}
+
 type OllamaOptions = {
   readonly model: string
   readonly serverUrl: string
@@ -26,7 +36,14 @@ function correctedText(value: unknown): string {
     message?.tool_calls || message?.refusal || typeof content !== 'string' ||
     !/[\p{L}\p{N}]/u.test(content) || content.includes('```')
   ) {
-    throw new Error('Ollama returned an unusable response; expected completed, corrected text.')
+    const reason = body?.error ? 'The server returned an error.'
+      : !choice ? 'Expected exactly one response choice.'
+      : choice.finish_reason !== 'stop' ? `Generation did not complete normally (finish_reason: ${JSON.stringify(choice.finish_reason)}).`
+      : message?.role !== 'assistant' ? 'Expected an assistant message.'
+      : message?.tool_calls || message?.refusal ? 'The response contains tool calls or a refusal.'
+      : typeof content !== 'string' || !/[\p{L}\p{N}]/u.test(content) ? 'Corrected text is missing or empty.'
+      : 'The response contains a code fence.'
+    throw new UnusableResponseError(value, reason)
   }
   return content.trim()
 }

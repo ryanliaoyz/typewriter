@@ -34,6 +34,27 @@ afterEach(() => {
 })
 
 describe('editor → queue → Ollama integration', () => {
+  it('reveals rejected responses and their reason without changing the draft', async () => {
+    const body = { choices: [{ finish_reason: 'length', message: { role: 'assistant', content: '<b>Partial correction</b>' } }] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(body)))
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox')
+    fireEvent.change(editor, { target: { value: 'They works.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    fireEvent.click(screen.getByText('Debug state'))
+    expect(screen.queryByText(/Generation did not complete normally/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show response' }))
+    expect(container.querySelector('.debug-response')).toHaveTextContent('finish_reason: "length"')
+    expect(container.querySelector('.debug-response')).toHaveTextContent('<b>Partial correction</b>')
+    expect(container.querySelector('.debug-response b')).toBeNull()
+    expect(editor).toHaveValue('They works.')
+    expect(readState(container).sentences[0].status).toBe('idle')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide response' }))
+    expect(container.querySelector('.debug-response')).toBeNull()
+    fireEvent.change(editor, { target: { value: 'They work.' } })
+    expect(screen.queryByRole('button', { name: 'Show response' })).not.toBeInTheDocument()
+  })
+
   it.each([true, false])('uses configured model and the correct request URL (development: %s)', async (development) => {
     vi.stubEnv('DEV', development)
     vi.stubEnv('VITE_OLLAMA_MODEL', 'custom-model')

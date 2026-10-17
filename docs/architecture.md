@@ -262,6 +262,13 @@ but wrong corrections remain suggestions, never automatic edits. Only surroundin
 response whitespace is trimmed; internal whitespace and Unicode are preserved.
 Identical text is clean, otherwise the returned text is a suggestion.
 
+Rejected chat envelopes raise `UnusableResponseError` with a validation reason and
+the returned JSON. The editor session retains those details with the current
+failure capture. **Show response** beside Retry in Debug state toggles a literal,
+read-only view of that reason and response, including finish reason and any returned
+content. These diagnostics are discarded with the failure on retry, edit, or
+deletion; they never become suggestions or modify the document.
+
 A 120-second timeout aborts a hung fetch so the queue can move on. Session disposal
 also aborts fetches; timers and cancellation listeners are cleaned up after each
 request. Edits do not abort the active request or release its slot early.

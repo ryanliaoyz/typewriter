@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState } from '../document/sentences'
 import { readModelConfig } from './config'
-import { createOllamaChecker } from './ollama'
+import { createOllamaChecker, UnusableResponseError } from './ollama'
 import { createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
 
-type Failure = { readonly sentence: SentenceCheck, readonly message: string }
+type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
 
 function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolean {
   return state.sentences.some((record) => record.id === checked.id &&
@@ -46,7 +46,11 @@ export function useSentenceEditor() {
         if (isCurrent(current.current, sentence)) {
           publishFailures([
             ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
-            { sentence, message: error instanceof Error ? error.message : 'Ollama check failed.' },
+            {
+              sentence,
+              message: error instanceof Error ? error.message : 'Ollama check failed.',
+              ...(error instanceof UnusableResponseError ? { details: error.details } : {}),
+            },
           ])
         }
       },

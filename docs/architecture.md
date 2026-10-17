@@ -296,18 +296,22 @@ before publishing React state so closely spaced callbacks preserve every failure
 ## Editor and development inspector
 
 [`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
-actions from `useSentenceEditor`, along with one alert per failed sentence showing
-its text, error, and a native **Retry** button. It passes current sentence state to
+actions from `useSentenceEditor`. It passes current sentence state to
 the suggestion review component below the textarea. Drafts live
-only in the current page session; no persistence is implemented. It explains that
+only in the current page session; no persistence is implemented. The development
+inspector holds introductory copy explaining that
 completed sentences are sent to the configured server, that accept/reject controls
 are coming next, and that writing is never replaced automatically (invariants
 1 and 9). After fixing server setup, retry failed sentences without reloading or
-changing the draft. Failure controls also implement invariant 10.
+changing the draft. Failure controls also implement invariant 10. For now, failure
+details and Retry buttons live exclusively inside the collapsed **Debug state**
+disclosure; production/preview do not expose them.
 
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
 live state used by the textarea. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
-shows document length in UTF-16 units, sentence/completion counts, and each
+consumes session state, failures, and the retry action. It shows one alert per
+failed occurrence with its input text, error, and a native **Retry** button,
+followed by document length in UTF-16 units, sentence/completion counts, and each
 sentence's ID, version, current end-exclusive range, JSON-escaped text, completion
 flag, and status. Complete sentences can become `clean` or `suggestion` after a
 successful check; failures remain `idle`. Suggestions also appear in raw JSON.

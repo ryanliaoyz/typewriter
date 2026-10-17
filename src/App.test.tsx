@@ -78,6 +78,9 @@ describe('App', () => {
 
     expect(screen.getByText(/Completed sentences are checked/)).toBeInTheDocument()
     expect(screen.getByText(/Compare suggestions below your draft/)).toBeInTheDocument()
+    expect(screen.getByText(/Compare suggestions below your draft/)).not.toBeVisible()
+    fireEvent.click(screen.getByText('Debug state'))
+    expect(screen.getByText(/Compare suggestions below your draft/)).toBeVisible()
   })
 
   it('shows live canonical state in the development inspector through edits, splits, merges, and deletion', () => {

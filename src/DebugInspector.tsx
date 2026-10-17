@@ -1,13 +1,27 @@
 import type { SentenceDocumentState } from './document/sentences'
+import type { useSentenceEditor } from './checking/useSentenceEditor'
 
-export default function DebugInspector({ state }: { state: SentenceDocumentState }) {
+type Props = {
+  state: SentenceDocumentState
+} & Partial<Pick<ReturnType<typeof useSentenceEditor>, 'failures' | 'retry'>>
+
+export default function DebugInspector({ state, failures = [], retry }: Props) {
   const completeCount = state.sentences.filter((sentence) => sentence.complete).length
   const edit = state.document.edit
 
   return (
     <details className="debug-inspector">
       <summary>Debug state</summary>
-      <p>Read-only, live editor state. Development only; nothing is persisted. Completed sentences are sent to the configured Ollama server.</p>
+      <p>A local-first grammar editor, in development. Completed sentences are checked with your configured Ollama server.</p>
+      <p>Compare suggestions below your draft. Accept and reject controls are coming next. Your writing is never automatically replaced.</p>
+      {failures.map(({ sentence, message }) => (
+        <div role="alert" key={sentence.id}>
+          <p>{sentence.text}</p>
+          <p>{message} This sentence remains unchecked.</p>
+          <button type="button" onClick={() => retry?.(sentence)}>Retry</button>
+        </div>
+      ))}
+      <p>Live editor state. Development only; nothing is persisted.</p>
       <dl className="debug-counts">
         <div><dt>Document length (UTF-16 units)</dt><dd>{state.document.text.length}</dd></div>
         <div><dt>Sentences</dt><dd>{state.sentences.length}</dd></div>

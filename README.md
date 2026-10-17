@@ -13,8 +13,9 @@ accept or reject conservative corrections.
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
   using `prompt.txt`. Select highlighted sentences in the review view to compare
-  original and suggested text without rewriting your draft. Failures have Retry
-  buttons; accept/reject controls remain planned.
+  original and suggested text without rewriting your draft. Failure details and
+  Retry buttons currently live only in development **Debug state**; accept/reject
+  controls remain planned.
 
 ## Quickstart
 

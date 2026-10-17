@@ -12,9 +12,9 @@ accept or reject conservative corrections.
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
-  using `prompt.txt`. Results are cached without rewriting text; development JSON
-  shows suggestions. Failures stay unchecked and have per-sentence Retry buttons;
-  suggestion review controls are not available yet.
+  using `prompt.txt`. Select highlighted sentences in the review view to compare
+  original and suggested text without rewriting your draft. Failures have Retry
+  buttons; accept/reject controls remain planned.
 
 ## Quickstart
 
@@ -69,7 +69,7 @@ React textarea
         └── Intl.Segmenter + occurrence reconciliation
               └── versioned sentence records / result cache
                     └── 400 ms debounce → FIFO queue → HTTP client → Ollama
-                          └── version-safe results → cache / development inspector
+                          └── version-safe results → cache → suggestion review
 ```
 
 Editor text is the source of truth. Sentence records are derived state with

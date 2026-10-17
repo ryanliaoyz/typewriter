@@ -69,6 +69,9 @@ describe('editor → queue → Ollama integration', () => {
     expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean', 'suggestion', 'idle'])
     expect(readState(container).sentences[1].suggestion).toBe('They work.')
     expect(editor).toHaveValue(text)
+    fireEvent.click(screen.getByRole('button', { name: 'They works.' }))
+    expect(screen.getByRole('region', { name: 'Sentence comparison' })).toHaveTextContent('They work.')
+    expect(editor).toHaveValue(text)
 
     fireEvent.change(editor, { target: { value: `\n${text}` } })
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })

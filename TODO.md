@@ -11,7 +11,7 @@
 - [x] Document Ollama as the cross-platform v1 runtime; defer `llama-server` support.
 - [x] Integrate Ollama on Linux, macOS, and Windows using `prompt.txt`, a configurable model/server URL, and a development proxy.
 - [x] Discard stale responses; expose failures with a retry action.
-- [ ] Highlight sentences with suggestions and show original/corrected text.
+- [x] Highlight sentences with suggestions and show original/corrected text.
 - [ ] Implement version-safe accept and per-version reject actions.
 - [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [ ] Evaluate corrections with `tests.txt` and document runnable setup commands.

@@ -1,4 +1,5 @@
 import DebugInspector from './DebugInspector'
+import SuggestionReview from './SuggestionReview'
 import { useSentenceEditor } from './checking/useSentenceEditor'
 
 export default function App() {
@@ -8,7 +9,7 @@ export default function App() {
     <main>
       <h1>Typewriter</h1>
       <p>A local-first grammar editor, in development. Completed sentences are checked with your configured Ollama server.</p>
-      <p>Corrections are cached for now; review controls are not available yet. Your writing is never automatically replaced.</p>
+      <p>Compare suggestions below your draft. Accept and reject controls are coming next. Your writing is never automatically replaced.</p>
       {failures.map(({ sentence, message }) => (
         <div role="alert" key={sentence.id}>
           <p>{sentence.text}</p>
@@ -25,6 +26,7 @@ export default function App() {
         onChange={(event) => updateText(event.currentTarget.value)}
         spellCheck={false}
       />
+      <SuggestionReview state={state} />
       {import.meta.env.DEV && <DebugInspector state={state} />}
     </main>
   )

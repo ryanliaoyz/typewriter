@@ -50,6 +50,61 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+.suggestion-review {
+  margin-top: 2rem;
+}
+
+.review-document,
+.suggestion-comparison {
+  padding: 1rem;
+  border: 1px solid #aaa;
+  border-radius: 0.5rem;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.review-document,
+.suggestion-comparison p {
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+.sentence-highlight {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0.15rem;
+  font: inherit;
+  color: inherit;
+  background: #fff0ac;
+  text-decoration: underline;
+  text-decoration-color: #806000;
+  white-space: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sentence-highlight[aria-expanded='true'] {
+  background: #ffda67;
+}
+
+.suggestion-review button:focus-visible {
+  outline: 2px solid #2457a7;
+  outline-offset: 2px;
+}
+
+.suggestion-comparison {
+  margin-top: 1rem;
+}
+
+.suggestion-comparison h4 {
+  margin-bottom: 0.25rem;
+}
+
+.suggestion-comparison p {
+  margin-top: 0;
+}
+
 .debug-inspector {
   margin-top: 2rem;
   padding: 1rem;

@@ -5,7 +5,8 @@
 Typewriter uses React + TypeScript + Vite. The editor, segmentation,
 reconciliation, result cache, sequential queue, and Ollama HTTP integration are
 implemented. Response validation, version-safe caching, and per-sentence failure
-notices with retry controls are connected; highlighting and accept/reject remain planned.
+notices with retry controls are connected. Sentence highlights and original/suggested
+comparisons are available; accept/reject remain planned.
 
 ## Canonical document state
 
@@ -296,10 +297,11 @@ before publishing React state so closely spaced callbacks preserve every failure
 
 [`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
 actions from `useSentenceEditor`, along with one alert per failed sentence showing
-its text, error, and a native **Retry** button. Drafts live
+its text, error, and a native **Retry** button. It passes current sentence state to
+the suggestion review component below the textarea. Drafts live
 only in the current page session; no persistence is implemented. It explains that
-completed sentences are sent to the configured server, that review controls are
-not available yet, and that writing is never replaced automatically (invariants
+completed sentences are sent to the configured server, that accept/reject controls
+are coming next, and that writing is never replaced automatically (invariants
 1 and 9). After fixing server setup, retry failed sentences without reloading or
 changing the draft. Failure controls also implement invariant 10.
 
@@ -308,8 +310,8 @@ live state used by the textarea. [`src/DebugInspector.tsx`](../src/DebugInspecto
 shows document length in UTF-16 units, sentence/completion counts, and each
 sentence's ID, version, current end-exclusive range, JSON-escaped text, completion
 flag, and status. Complete sentences can become `clean` or `suggestion` after a
-successful check; failures remain `idle`. Suggestions appear in raw JSON, not
-review controls. Completion means eligible for scheduling, not a grammar-check
+successful check; failures remain `idle`. Suggestions also appear in raw JSON.
+Completion means eligible for scheduling, not a grammar-check
 result. This read-only view consumes session state without a separate cache or
 segmentation pipeline (invariants 1 and 2).
 
@@ -331,7 +333,26 @@ For manual validation:
    and newlines to inspect UTF-16 ranges and escaped whitespace.
 7. Delete all text: sentence records disappear while the ID counter remains.
 
-## Connected model integration and planned suggestion review
+## Suggestion review
+
+[`src/SuggestionReview.tsx`](../src/SuggestionReview.tsx) consumes the current
+sentence-document state and produces a read-only document view plus an optional
+original/suggested comparison panel. The textarea remains the editable source of
+truth. The view slices canonical text at current UTF-16 suggestion ranges, preserving
+all intervening text, whitespace, and unfinished prose. Whole-sentence highlights
+are native buttons with keyboard activation, visible focus, and expanded state.
+Text is rendered literally, including model output (invariants 1, 2, and 9).
+
+Selection stores only an occurrence ID and version. Each render resolves the
+comparison from current records: offset shifts retain selection; content edits,
+deletion, splits, merges, or loss of suggestion status clear it permanently.
+Duplicate sentences remain independent. Closing the panel returns focus to the
+highlight. An empty state does not imply that unchecked sentences are clean.
+[`src/styles.css`](../src/styles.css) supplies whitespace-preserving layout,
+wrapping, highlight colors, and focus styles. No document or cache changes are
+made by review controls; accept/reject actions remain planned.
+
+## Connected model integration and planned suggestion actions
 
 ```text
 Editor sentence state → sequential queue → HTTP client → Ollama
@@ -344,8 +365,8 @@ Editor sentence state → sequential queue → HTTP client → Ollama
 The HTTP client and development proxy are connected as described above. The
 application uses Ollama directly without a Python service, database, Redis, or
 worker system. See the [model server setup](../README.md#model-server-setup) for
-platform validation limits. Highlighting and accept/reject controls in the diagram
-remain planned.
+platform validation limits. Highlighting is implemented; accept/reject controls in
+the diagram remain planned.
 
 Gemma 2 9B Q4_K_M remains the target model pending evaluation with Ollama; choosing
 the runtime does not establish model availability or correction quality.
@@ -360,11 +381,11 @@ model request. When the response arrives:
 
 1. Discard it if the sentence was deleted or its version/input changed.
 2. If the valid returned text matches the input, mark the record clean.
-3. Otherwise, store a suggestion; highlighting remains planned.
+3. Otherwise, store a suggestion and highlight its sentence in the review view.
 
 Server failures or unusable responses remain unchecked and show per-sentence
-notices with retry controls. Clicking a future highlighted sentence will
-show its original and proposed text:
+notices with retry controls. Clicking a highlighted sentence shows its original
+and proposed text. Planned actions are:
 
 - **Accept:** verify the current version, replace only its current range, and
   reconcile the updated document.
@@ -401,7 +422,11 @@ replacement, edited/deleted stale results, failure continuation, and Strict Mode
 cleanup. Retry tests cover independent duplicate failures, repeated failure and
 recovery, FIFO ordering, active-request and debounce constraints, stale retry
 captures, failure invalidation, and preservation of canonical text. None of these
-tests needs a running model. Suggestion-action tests remain planned.
+tests needs a running model. Review tests cover independent duplicate selection,
+whitespace/Unicode preservation, offset shifts, selection invalidation after edits,
+deletion, splits/merges or result removal, closing and focus restoration, and
+integration with cached model responses without rewriting the editor.
+Suggestion-action tests remain planned.
 
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
 conservative corrections may be valid; [`output.txt`](../output.txt) is historical

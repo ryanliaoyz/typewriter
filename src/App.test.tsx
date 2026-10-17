@@ -73,11 +73,11 @@ describe('App', () => {
     expect(reconcile.mock.calls[2][0]).toBe(inserted)
   })
 
-  it('explains model checking and the current lack of review controls', () => {
+  it('explains model checking and suggestion review', () => {
     render(<App />)
 
     expect(screen.getByText(/Completed sentences are checked/)).toBeInTheDocument()
-    expect(screen.getByText(/review controls are not available yet/)).toBeInTheDocument()
+    expect(screen.getByText(/Compare suggestions below your draft/)).toBeInTheDocument()
   })
 
   it('shows live canonical state in the development inspector through edits, splits, merges, and deletion', () => {

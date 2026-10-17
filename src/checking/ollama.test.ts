@@ -17,7 +17,7 @@ afterEach(() => {
 
 describe('Ollama checker', () => {
   it('sends the actual prompt.txt and only sentence content through the chat API', async () => {
-    const fetch = vi.fn().mockResolvedValue(response('  They work.\n'))
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(response('  They work.\n')))
     vi.stubGlobal('fetch', fetch)
 
     expect(await createOllamaChecker(options)(sentence)).toEqual({ status: 'suggestion', suggestion: 'They work.' })
@@ -33,15 +33,25 @@ describe('Ollama checker', () => {
         { role: 'user', content: sentence.text },
       ],
     })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[1].content).toBe('They work.')
   })
 
   it('classifies identical text as clean without storing another copy', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(`\n${sentence.text}  `)))
+    const fetch = vi.fn().mockResolvedValue(response(`\n${sentence.text}  `))
+    vi.stubGlobal('fetch', fetch)
     expect(await createOllamaChecker(options)(sentence)).toEqual({ status: 'clean' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reject labels already present in the original prose', async () => {
+    const text = 'Correction: They work.'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(text)))
+    expect(await createOllamaChecker(options)({ ...sentence, text })).toEqual({ status: 'clean' })
   })
 
   it('supports direct server URLs and preserves internal whitespace and Unicode', async () => {
-    const fetch = vi.fn().mockResolvedValue(response('😀 They\twork.\nNext line.'))
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(response('😀 They\twork.\nNext line.')))
     vi.stubGlobal('fetch', fetch)
     expect(await createOllamaChecker({ ...options, serverUrl: 'http://localhost:11434/' })(sentence)).toEqual({
       status: 'suggestion', suggestion: '😀 They\twork.\nNext line.',
@@ -52,6 +62,25 @@ describe('Ollama checker', () => {
   it.each([null, '', ' \n ', 7, {}, '...', '```text\nThey work.\n```'])('rejects unusable content %j rather than marking it clean', async (content) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(content)))
     await expect(createOllamaChecker(options)(sentence)).rejects.toThrow('unusable response')
+  })
+
+  it.each(['They work.\n\n**Correction:**\nThey work.\n\n**Changes made:**\n1. Fixed grammar.', 'Corrected sentence: They work.'])('rejects added commentary: %s', async (content) => {
+    const fetch = vi.fn().mockResolvedValue(response(content))
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker(options)(sentence)).rejects.toMatchObject({ details: expect.stringContaining('commentary') })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects unstable corrections without looping or exposing an intermediate suggestion', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response('They work.')).mockResolvedValueOnce(response('They are working.'))
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker(options)(sentence)).rejects.toMatchObject({ details: expect.stringContaining('changed its own correction') })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('propagates verification failure instead of saving a partial success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response('They work.')).mockRejectedValueOnce(new Error('offline')))
+    await expect(createOllamaChecker(options)(sentence)).rejects.toThrow('offline')
   })
 
   it.each([

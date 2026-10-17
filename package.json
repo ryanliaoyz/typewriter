@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "evaluate:model": "node scripts/evaluate-model.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

@@ -19,3 +19,6 @@ Rules:
 - Prefer concrete and direct wording when removing obvious redundancy or inflated phrasing.
 - If a sentence is already correct and reasonably clear, return it unchanged.
 - Return only the edited text.
+- Return exactly one final version, without headings, labels, explanations, change lists, or alternative drafts.
+- Before responding, check the entire edited text for remaining errors and ensure it needs no further corrections under these rules.
+- Do not describe your review or your changes. If no changes are needed, copy the input exactly.

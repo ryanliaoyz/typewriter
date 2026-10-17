@@ -25,7 +25,7 @@ function object(value: unknown): Record<string, unknown> | null {
 }
 
 /** Validate the chat envelope, not the linguistic quality of a proposed edit. */
-function correctedText(value: unknown): string {
+function correctedText(value: unknown, input: string): string {
   const body = object(value)
   const choices = body?.choices
   const choice = Array.isArray(choices) && choices.length === 1 ? object(choices[0]) : null
@@ -45,12 +45,17 @@ function correctedText(value: unknown): string {
       : 'The response contains a code fence.'
     throw new UnusableResponseError(value, reason)
   }
+  const commentary = /^\s*(?:#{1,6}\s*|\*{1,2})?(?:correction|corrected (?:text|sentence|version)|changes made|explanation|here(?:'s| is) (?:the|your) corrected)[\s:*]/im
+  const list = /^\s*(?:\d+[.)]|[-*])\s+/m
+  if ((commentary.test(content) && !commentary.test(input)) || (list.test(content) && !list.test(input))) {
+    throw new UnusableResponseError(value, 'The response adds commentary or a change list instead of only corrected text.')
+  }
   return content.trim()
 }
 
 /** Runtime-specific HTTP stays outside the editor and scheduling logic. */
 export function createOllamaChecker({ model, serverUrl, signal }: OllamaOptions) {
-  return async ({ text }: SentenceCheck): Promise<SentenceCheckResult> => {
+  async function request(text: string): Promise<string> {
     const controller = new AbortController()
     const abort = () => controller.abort()
     signal?.addEventListener('abort', abort, { once: true })
@@ -79,8 +84,7 @@ export function createOllamaChecker({ model, serverUrl, signal }: OllamaOptions)
         }),
       })
       if (!response.ok) throw new Error(`Ollama request failed (HTTP ${response.status}). Check the server and model name.`)
-      const corrected = correctedText(await response.json())
-      return corrected === text ? { status: 'clean' } : { status: 'suggestion', suggestion: corrected }
+      return correctedText(await response.json(), text)
     } catch (error) {
       if (timedOut) throw new Error('Ollama request timed out after 120 seconds.')
       if (controller.signal.aborted) throw error
@@ -91,5 +95,18 @@ export function createOllamaChecker({ model, serverUrl, signal }: OllamaOptions)
       clearTimeout(timer)
       signal?.removeEventListener('abort', abort)
     }
+  }
+
+  return async ({ text }: SentenceCheck): Promise<SentenceCheckResult> => {
+    const corrected = await request(text)
+    if (corrected === text) return { status: 'clean' }
+    const verified = await request(corrected)
+    if (verified !== corrected) {
+      throw new UnusableResponseError(
+        { input: text, candidate: corrected, verification: verified },
+        'The model changed its own correction on verification. No intermediate suggestion was saved.',
+      )
+    }
+    return { status: 'suggestion', suggestion: corrected }
   }
 }

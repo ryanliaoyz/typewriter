@@ -34,6 +34,28 @@ afterEach(() => {
 })
 
 describe('editor → queue → Ollama integration', () => {
+  it('holds the queue during verification and discards a suggestion edited during that pass', async () => {
+    const verification = deferred()
+    const fetch = vi.fn().mockResolvedValueOnce(response('They work.'))
+      .mockReturnValueOnce(verification.promise).mockResolvedValueOnce(response('Next.'))
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox')
+    fireEvent.change(editor, { target: { value: 'They works. Next.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(readState(container).sentences[0].status).toBe('idle')
+    expect(screen.queryByRole('button', { name: 'They works.' })).not.toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: 'Next.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    verification.resolve(response('They work.'))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean'])
+    expect(editor).toHaveValue('Next.')
+  })
+
   it('reveals rejected responses and their reason without changing the draft', async () => {
     const body = { choices: [{ finish_reason: 'length', message: { role: 'assistant', content: '<b>Partial correction</b>' } }] }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(body)))
@@ -71,7 +93,8 @@ describe('editor → queue → Ollama integration', () => {
 
   it('debounces, sends duplicates separately, skips unfinished text, and caches without rewriting', async () => {
     const first = deferred()
-    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(response('They work.'))
+    const fetch = vi.fn().mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(response('They work.')).mockResolvedValueOnce(response('They work.'))
     vi.stubGlobal('fetch', fetch)
     const { container } = render(<StrictMode><App /></StrictMode>)
     const editor = screen.getByRole('textbox', { name: 'Your writing' })
@@ -85,7 +108,7 @@ describe('editor → queue → Ollama integration', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     first.resolve(response('They works.'))
     await settle()
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledTimes(3)
     expect(JSON.parse(fetch.mock.calls[0][1].body).messages[1].content).toBe('They works.')
     expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean', 'suggestion', 'idle'])
     expect(readState(container).sentences[1].suggestion).toBe('They work.')
@@ -96,13 +119,14 @@ describe('editor → queue → Ollama integration', () => {
 
     fireEvent.change(editor, { target: { value: `\n${text}` } })
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledTimes(3)
     expect(readState(container).sentences[1].status).toBe('suggestion')
   })
 
   it('discards an edited response and checks only the latest queued version', async () => {
     const first = deferred()
-    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(response('They work!'))
+    const fetch = vi.fn().mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(response('They work.')).mockResolvedValueOnce(response('They work!'))
     vi.stubGlobal('fetch', fetch)
     const { container } = render(<App />)
     const editor = screen.getByRole('textbox', { name: 'Your writing' })
@@ -113,17 +137,17 @@ describe('editor → queue → Ollama integration', () => {
     first.resolve(response('They work.'))
     await settle()
     expect(readState(container).sentences[0]).toMatchObject({ version: 3, status: 'idle' })
-    expect(fetch).toHaveBeenCalledTimes(1)
-    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
     expect(fetch).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[1].content).toBe('They work!')
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(fetch.mock.calls[2][1].body).messages[1].content).toBe('They work!')
     expect(readState(container).sentences[0]).toMatchObject({ version: 3, status: 'clean' })
     expect(editor).toHaveValue('They work!')
   })
 
   it('ignores responses for deleted occurrences', async () => {
     const first = deferred()
-    const fetch = vi.fn().mockReturnValue(first.promise)
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(response('They work.'))
     vi.stubGlobal('fetch', fetch)
     const { container } = render(<App />)
     const editor = screen.getByRole('textbox', { name: 'Your writing' })
@@ -134,7 +158,7 @@ describe('editor → queue → Ollama integration', () => {
     await settle()
     expect(readState(container).sentences).toEqual([])
     expect(editor).toHaveValue('')
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('does not show a server error for an occurrence deleted during inference', async () => {
@@ -178,6 +202,7 @@ describe('editor → queue → Ollama integration', () => {
       .mockResolvedValueOnce(Response.json({ choices: [] }))
       .mockResolvedValueOnce(response('Same.'))
       .mockRejectedValueOnce(new Error('still offline'))
+      .mockResolvedValueOnce(response('Changed.'))
       .mockResolvedValueOnce(response('Changed.'))
     vi.stubGlobal('fetch', fetch)
     const { container } = render(<App />)

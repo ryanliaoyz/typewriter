@@ -260,21 +260,34 @@ No API key, model-management API, or Python service is needed.
 
 The client requires one assistant choice with `finish_reason: 'stop'`, nonempty
 text containing a letter/number, and no error, tool call, refusal, or code fence.
+Newly introduced correction/explanation headings and numbered or bulleted lists
+are also rejected as obvious commentary. Existing labels/lists in the input are
+allowed; this is a conservative heuristic, not a complete output-contract parser.
 Truncated responses, invalid JSON, failed HTTP status codes, and network failures
 reject rather than produce clean results. This checks the envelope and obvious
 unusable output, not grammar quality or every possible prompt violation; plausible
 but wrong corrections remain suggestions, never automatic edits. Only surrounding
 response whitespace is trimmed; internal whitespace and Unicode are preserved.
-Identical text is clean, otherwise the returned text is a suggestion.
+Identical text is clean. A changed response is a candidate only: the client sends
+it through a second independent request with the same prompt and settings. Only
+an unchanged, valid verification response publishes the candidate as a suggestion.
+If the model revises it again, the check fails with both versions in diagnostic
+details. Verification errors also fail the entire check. There are at most two
+requests per check, no correction loop, and no intermediate result enters the cache.
+This measures model stability, not proof of grammatical correctness.
 
 Rejected chat envelopes raise `UnusableResponseError` with a validation reason and
-the returned JSON. The editor session retains those details with the current
+the returned JSON; unstable verification raises the same error with input,
+candidate, and verification text. The editor session retains those details with the current
 failure capture. **Show response** beside Retry in Debug state toggles a literal,
 read-only view of that reason and response, including finish reason and any returned
 content. These diagnostics are discarded with the failure on retry, edit, or
 deletion; they never become suggestions or modify the document.
 
-A 120-second timeout aborts a hung fetch so the queue can move on. Session disposal
+A 120-second timeout per request aborts a hung fetch so the queue can move on.
+Both correction and verification occupy the same queue slot, sequentially; a
+changed result may take up to two request timeouts. Edits during either pass still
+invalidate the captured sentence version before publication. Session disposal
 also aborts fetches; timers and cancellation listeners are cleaned up after each
 request. Edits do not abort the active request or release its slot early.
 
@@ -450,3 +463,33 @@ model output and performance information, not an exact-output oracle or a
 benchmark of the planned server setup. [`TODO.md`](../TODO.md) tracks the remaining
 implementation work; [`AGENTS.md`](../AGENTS.md) records architecture constraints
 and guidance for coding agents.
+
+### Output-contract and stability evaluation
+
+[`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) reads `prompt.txt`
+and `tests.txt`, adds the two long sentences reported during manual testing, and
+sends each input and then its candidate output to Ollama sequentially. It prints
+JSON lines containing both raw envelopes and an equality-based stability flag for
+manual review. It does not change editor state or use `output.txt` as an oracle.
+Run `OLLAMA_MODEL=qwen3.5:9b npm run evaluate:model` on Linux/macOS; in PowerShell,
+set `$env:OLLAMA_MODEL = 'qwen3.5:9b'` then run `npm run evaluate:model`.
+`OLLAMA_SERVER_URL` optionally overrides `http://127.0.0.1:11434`; the default
+model is the target Gemma tag. These script settings are separate from Vite's env
+files. The stability flag alone does not validate formatting or grammar: review
+the full outputs, particularly preservation of meaning and unnecessary rewrites.
+
+Local evaluation on 2026-10-17 with `qwen3.5:9b`, thinking disabled, temperature 0,
+and a 2048-token limit: all 26 cases returned completed, plain-text responses on
+both passes; 20 candidates were unchanged on verification and 6 were revised again.
+The unstable cases were `tests.txt` samples 6, 9, 11, 13, and 20, plus the long
+prerequisites sentence. Examples included unnecessary substitutions of “wrong”
+with “incorrect,” “several” with “multiple,” and “a lot of confusion” with
+“significant confusion.” These candidates are now rejected, not exposed as
+intermediate suggestions. No commentary appeared in this run; this does not prove
+the model always follows the output-only contract.
+
+Quality issues remain even for stable responses: the long “Irregardless…” input
+only lost “about” after “discussing,” retaining its other clutter; the otherwise
+valid “somewhat unconventional” sample lost “somewhat” and “nevertheless,” reducing
+nuance. The target Gemma model has not been evaluated here. An unchanged second
+pass is a consistency check, not a guarantee that an edit is correct or conservative.

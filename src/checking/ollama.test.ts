@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import actualPrompt from '../../prompt.txt?raw'
-import { createOllamaChecker, REQUEST_TIMEOUT_MS } from './ollama'
+import { createOllamaChecker, MAX_EDIT_PASSES, REQUEST_TIMEOUT_MS } from './ollama'
 
 const sentence = { id: 'sentence-1', version: 2, text: 'They works.' }
 const options = { model: 'test-model', serverUrl: '/ollama/' }
@@ -71,14 +71,67 @@ describe('Ollama checker', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects unstable corrections without looping or exposing an intermediate suggestion', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(response('They work.')).mockResolvedValueOnce(response('They are working.'))
+  it('refines each candidate until stable and returns only the final suggestion', async () => {
+    const text = 'They is able to work.'
+    const fetch = vi.fn().mockResolvedValueOnce(response('They are able to work.'))
+      .mockResolvedValueOnce(response('They can work.')).mockResolvedValueOnce(response('They can work.'))
     vi.stubGlobal('fetch', fetch)
-    await expect(createOllamaChecker(options)(sentence)).rejects.toMatchObject({ details: expect.stringContaining('changed its own correction') })
-    expect(fetch).toHaveBeenCalledTimes(2)
+    await expect(createOllamaChecker(options)({ ...sentence, text })).resolves.toEqual({
+      status: 'suggestion', suggestion: 'They can work.',
+    })
+    expect(fetch.mock.calls.map(([, init]) => JSON.parse(init.body).messages[1].content)).toEqual([
+      text, 'They are able to work.', 'They can work.',
+    ])
   })
 
-  it('propagates verification failure instead of saving a partial success', async () => {
+  it.each([
+    ['They work.', sentence.text],
+    ['They work.', 'They do work.', 'They work.'],
+  ])('stops a cycle with its trace instead of publishing a result: %j', async (...outputs) => {
+    const fetch = vi.fn()
+    for (const text of outputs) fetch.mockResolvedValueOnce(response(text))
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker(options)(sentence)).rejects.toMatchObject({
+      message: expect.stringContaining('cycle'),
+      details: expect.stringContaining(JSON.stringify({ input: sentence.text, passes: outputs }, null, 2)),
+    })
+    expect(fetch).toHaveBeenCalledTimes(outputs.length)
+  })
+
+  it('stops non-repeating edits at the pass limit', async () => {
+    const fetch = vi.fn()
+    for (let pass = 1; pass <= MAX_EDIT_PASSES; pass += 1) {
+      fetch.mockResolvedValueOnce(response(`Revision ${pass}.`))
+    }
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker(options)(sentence)).rejects.toThrow(`did not stabilize within ${MAX_EDIT_PASSES} passes`)
+    expect(fetch).toHaveBeenCalledTimes(MAX_EDIT_PASSES)
+  })
+
+  it('allows convergence on the final permitted pass', async () => {
+    const fetch = vi.fn()
+    for (let pass = 1; pass < MAX_EDIT_PASSES; pass += 1) {
+      fetch.mockResolvedValueOnce(response(`Revision ${pass}.`))
+    }
+    const final = `Revision ${MAX_EDIT_PASSES - 1}.`
+    fetch.mockResolvedValueOnce(response(final))
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker(options)(sentence)).resolves.toEqual({ status: 'suggestion', suggestion: final })
+    expect(fetch).toHaveBeenCalledTimes(MAX_EDIT_PASSES)
+  })
+
+  it('does not start another pass after disposal even if an active fetch resolves', async () => {
+    const controller = new AbortController()
+    const fetch = vi.fn().mockImplementationOnce(async () => {
+      controller.abort()
+      return response('They work.')
+    })
+    vi.stubGlobal('fetch', fetch)
+    await expect(createOllamaChecker({ ...options, signal: controller.signal })(sentence)).rejects.toThrow('abort')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('propagates refinement failure instead of saving a partial success', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response('They work.')).mockRejectedValueOnce(new Error('offline')))
     await expect(createOllamaChecker(options)(sentence)).rejects.toThrow('offline')
   })

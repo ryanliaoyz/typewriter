@@ -3,12 +3,13 @@ import type { SentenceCheckResult } from '../document/sentences'
 import type { SentenceCheck } from './queue'
 
 export const REQUEST_TIMEOUT_MS = 120_000
+export const MAX_EDIT_PASSES = 5
 
 export class UnusableResponseError extends Error {
   readonly details: string
 
-  constructor(value: unknown, reason: string) {
-    super('Ollama returned an unusable response; expected completed, corrected text.')
+  constructor(value: unknown, reason: string, message = 'Ollama returned an unusable response; expected completed, corrected text.') {
+    super(message)
     this.name = 'UnusableResponseError'
     this.details = `${reason}\n\n${JSON.stringify(value, null, 2)}`
   }
@@ -98,15 +99,33 @@ export function createOllamaChecker({ model, serverUrl, signal }: OllamaOptions)
   }
 
   return async ({ text }: SentenceCheck): Promise<SentenceCheckResult> => {
-    const corrected = await request(text)
-    if (corrected === text) return { status: 'clean' }
-    const verified = await request(corrected)
-    if (verified !== corrected) {
-      throw new UnusableResponseError(
-        { input: text, candidate: corrected, verification: verified },
-        'The model changed its own correction on verification. No intermediate suggestion was saved.',
-      )
+    let candidate = text
+    const seen = new Set([text])
+    const passes: string[] = []
+
+    for (let pass = 0; pass < MAX_EDIT_PASSES; pass += 1) {
+      signal?.throwIfAborted()
+      const next = await request(candidate)
+      signal?.throwIfAborted()
+      passes.push(next)
+      if (next === candidate) {
+        return next === text ? { status: 'clean' } : { status: 'suggestion', suggestion: next }
+      }
+      if (seen.has(next)) {
+        throw new UnusableResponseError(
+          { input: text, passes },
+          'Refinement revisited an earlier version instead of stabilizing. Retry to start a new attempt.',
+          'Ollama editing entered a cycle before reaching a stable result.',
+        )
+      }
+      seen.add(next)
+      candidate = next
     }
-    return { status: 'suggestion', suggestion: corrected }
+
+    throw new UnusableResponseError(
+      { input: text, passes },
+      'Refinement reached the pass limit. No intermediate suggestion was saved. Retry to start a new attempt.',
+      `Ollama editing did not stabilize within ${MAX_EDIT_PASSES} passes.`,
+    )
   }
 }

@@ -268,28 +268,42 @@ reject rather than produce clean results. This checks the envelope and obvious
 unusable output, not grammar quality or every possible prompt violation; plausible
 but wrong corrections remain suggestions, never automatic edits. Only surrounding
 response whitespace is trimmed; internal whitespace and Unicode are preserved.
-Identical text is clean. A changed response is a candidate only: the client sends
-it through a second independent request with the same prompt and settings. Only
-an unchanged, valid verification response publishes the candidate as a suggestion.
-If the model revises it again, the check fails with both versions in diagnostic
-details. Verification errors also fail the entire check. There are at most two
-requests per check, no correction loop, and no intermediate result enters the cache.
-This measures model stability, not proof of grammatical correctness.
+The client runs a bounded refinement state machine within one check:
+
+```text
+original input → request(current candidate) → validate response
+                       ↑                          │
+                       └── new candidate ──────────┤ changed, unseen, budget left
+                                                  ├ unchanged → stable result
+                                                  └ invalid / cycle / limit → failure
+```
+
+An unchanged first response is `clean`. A changed response becomes the next
+candidate and is sent through the same prompt/settings again. Only a response
+identical to its immediate input publishes the converged text as a suggestion.
+Revisiting any earlier version (including the original) is a cycle, not a clean
+result. `MAX_EDIT_PASSES` limits each attempt to five requests, including the
+confirmation pass; convergence on pass five succeeds. Cycle and limit failures
+have distinct messages and can be retried. HTTP or validation errors stop the
+attempt immediately. No intermediate candidate enters the cache or editor, and
+all passes retain the original sentence ID/version for stale-result checking.
+Convergence measures consistency, not grammatical correctness or semantic fidelity.
 
 Rejected chat envelopes raise `UnusableResponseError` with a validation reason and
-the returned JSON; unstable verification raises the same error with input,
-candidate, and verification text. The editor session retains those details with the current
+the returned JSON; non-convergence raises the same error with the original input
+and ordered pass outputs. The editor session retains those details with the current
 failure capture. **Show response** beside Retry in Debug state toggles a literal,
 read-only view of that reason and response, including finish reason and any returned
 content. These diagnostics are discarded with the failure on retry, edit, or
 deletion; they never become suggestions or modify the document.
 
 A 120-second timeout per request aborts a hung fetch so the queue can move on.
-Both correction and verification occupy the same queue slot, sequentially; a
-changed result may take up to two request timeouts. Edits during either pass still
+All refinement passes occupy the same queue slot, sequentially; a check has at
+most five requests, each with its own timeout. Edits during any pass still
 invalidate the captured sentence version before publication. Session disposal
 also aborts fetches; timers and cancellation listeners are cleaned up after each
-request. Edits do not abort the active request or release its slot early.
+request. Disposal is checked before and after every pass so no subsequent request
+starts after unmount. Edits do not abort the active request or release its slot early.
 
 ## Editor session and checking lifecycle
 
@@ -425,16 +439,23 @@ Start with whole-sentence highlights. A later enhancement can compute word-level
 diffs locally. The model should not produce character offsets or edit metadata.
 Model responses must never silently replace canonical editor text.
 
-`prompt.txt` asks the model to correct spelling, grammar, punctuation, and
-objectively incorrect word usage with minimal local changes. Clutter removal is
-limited to unmistakable repeated meaning with no emphasis or nuance, without
-recasting the surrounding clause. Tense and aspect must stay unless the verb form
-is incorrect. Optional shortening, synonym substitutions, and removal of qualifiers
-or contrast are explicitly forbidden. The final review must fix remaining objective
-errors and undo unnecessary changes, not start another polishing pass. Correct
-sentences should be returned unchanged even when a shorter version is possible;
-suggestions always require user approval. These are model instructions, not a
-guarantee of compliance.
+`prompt.txt` asks the model to correct grammar and actively compress wordy prose
+while preserving its full meaning. Clause restructuring, shorter equivalents,
+and replacing nominalizations or bloated verb strings with direct verbs are part
+of the editing task. For example, “a person who participated in the meeting” can
+become “a meeting participant,” and “ultimately resulted in having a beneficial
+effect on” can become “ultimately improved.” Sentence-initial “Albeit” before a
+full clause may become the more natural “Although.” This is a product editing
+preference, not a claim that every finite use of “albeit” is ungrammatical.
+
+Fidelity takes priority over word count: keep facts, causal relationships, tense
+and aspect, negation, attribution, scope, quantities, degree, uncertainty, contrast,
+technical terms, and deliberate emphasis. “Entire team's overall productivity”
+expresses both whose productivity and aggregate productivity; compression should
+preserve both. Already correct, clear, concise text should stay unchanged, without
+equal-value synonym swaps. The final review should finish the useful compression
+and repair remaining errors in one pass. These are model instructions, not a
+proof of semantic equivalence. Suggestions remain user-controlled.
 
 ## Testing and evaluation
 
@@ -459,11 +480,14 @@ captures, failure invalidation, and preservation of canonical text. None of thes
 tests needs a running model. Review tests cover independent duplicate selection,
 whitespace/Unicode preservation, offset shifts, selection invalidation after edits,
 deletion, splits/merges or result removal, closing and focus restoration, and
-integration with cached model responses without rewriting the editor.
+integration with cached model responses without rewriting the editor. Refinement
+tests cover multi-pass convergence, original/candidate cycles, exhaustion of the
+pass budget, convergence at the limit, failure propagation, cancellation, queue
+blocking until convergence, stale results, and retry after a cycle.
 Suggestion-action tests remain planned.
 
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
-conservative corrections may be valid; [`output.txt`](../output.txt) is historical
+meaning-preserving edits may be valid; [`output.txt`](../output.txt) is historical
 model output and performance information, not an exact-output oracle or a
 benchmark of the planned server setup. [`TODO.md`](../TODO.md) tracks the remaining
 implementation work; [`AGENTS.md`](../AGENTS.md) records architecture constraints
@@ -472,18 +496,32 @@ and guidance for coding agents.
 ### Output-contract and stability evaluation
 
 [`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) reads `prompt.txt`
-and `tests.txt`, adds the two long sentences reported during manual testing, the
-meeting sentence and two corrected variants, and two additional tense/qualifier
-preservation cases (31 inputs total). It sends each input and then its candidate
-output to Ollama sequentially. It prints JSON lines containing both raw envelopes
-and an equality-based stability flag for
-manual review. It does not change editor state or use `output.txt` as an oracle.
+and `tests.txt`, adds the long sentences reported during manual testing, the
+meeting sentence and two corrected variants, and semantic-preservation cases
+(37 inputs total). The latter cover tense, qualifiers, negation, attribution,
+scope, uncertainty, and numerical precision. It sends each input and then its
+candidate outputs to Ollama sequentially until unchanged, a cycle, or five passes.
+It prints JSON lines containing all raw response envelopes (`passes`), an `outcome`
+of `stable`, `cycle`, `limit`, or `invalid`, and whitespace-delimited word counts
+for the input and stable result (`null` without a stable result). Transport errors
+include the partial trace. These
+support manual review; the script does not change editor state or use `output.txt`
+as an oracle.
 Run `OLLAMA_MODEL=qwen3.5:9b npm run evaluate:model` on Linux/macOS; in PowerShell,
 set `$env:OLLAMA_MODEL = 'qwen3.5:9b'` then run `npm run evaluate:model`.
 `OLLAMA_SERVER_URL` optionally overrides `http://127.0.0.1:11434`; the default
 model is the target Gemma tag. These script settings are separate from Vite's env
-files. The stability flag alone does not validate formatting or grammar: review
-the full outputs, particularly preservation of meaning and unnecessary rewrites.
+files. Stability and word count do not validate meaning, formatting, or grammar.
+Review each original/candidate pair for useful compression, complete corrections,
+and preservation of the facts and qualifiers above. Stable but unchanged bloated
+prose is a missed opportunity; a shorter result that loses meaning is a bad edit.
+Refinement can converge after several useful compressions. It is a consistency
+guard, not a semantic judge; it can exhaust the budget on usable text or accept a
+stable semantic error. The script checks completed, nonempty responses and leaves
+full output-contract and meaning assessment to manual review.
+
+The runs below record prompt development. The latest contract encourages
+meaning-preserving compression; the earlier minimal-edit restrictions are historical.
 
 Before tightening the prompt's anti-rewriting rules, local evaluation on
 2026-10-17 with `qwen3.5:9b`, thinking disabled, temperature 0,
@@ -492,8 +530,8 @@ both passes; 20 candidates were unchanged on verification and 6 were revised aga
 The unstable cases were `tests.txt` samples 6, 9, 11, 13, and 20, plus the long
 prerequisites sentence. Examples included unnecessary substitutions of “wrong”
 with “incorrect,” “several” with “multiple,” and “a lot of confusion” with
-“significant confusion.” These candidates are now rejected, not exposed as
-intermediate suggestions. No commentary appeared in this run; this does not prove
+“significant confusion.” The then-current two-pass guard rejected those candidates.
+No commentary appeared in this run; this does not prove
 the model always follows the output-only contract.
 
 That run also exposed quality issues even for stable responses: the long
@@ -516,6 +554,29 @@ their tense, clauses, and qualifiers. All eight valid-prose inputs at the end of
 Three inputs still failed stability: sample 6 continued swapping “wrong” for
 “incorrect”; the prerequisites sentence shortened phrases on verification; and
 the original meeting sentence removed “each and every” on the first pass, then
-removed “different” from “their own different opinion” on the second. The runtime
-guard withholds these candidates. The prompt is more conservative, but does not
-eliminate incremental rewriting or establish that a stable response is error-free.
+removed “different” from “their own different opinion” on the second. The then-current
+two-pass guard withheld these candidates. That prompt reduced rewriting, but did not
+eliminate incremental edits or establish that a stable response was error-free.
+
+With meaning-preserving compression enabled and refinement allowed up to five
+passes, a subsequent 2026-10-17 run with the same local model/settings converged
+on 36/37 inputs. Seven were unchanged on the first pass; 15 converged on pass two,
+10 on pass three, three on pass four, and one on pass five. The deployment/config
+sentence (`tests.txt` sample 13) repeated an earlier wording on pass four and was
+classified as a cycle. No input exhausted the limit or returned an incomplete
+envelope in this run.
+
+The researcher sentence shortened from 40 to 26 whitespace-delimited words and
+converged on pass two, retaining “ultimately” and “the entire team's overall
+productivity.” The software-update example converged on pass four, from 47 to
+20 words. These demonstrate useful structural compression and multi-pass completion,
+not proof that every change was faithful.
+
+Manual review still found semantic drift: “is designed to process” became a claim
+that software actually processes data; “decided to postpone” became “postponed”;
+some present-perfect/progressive forms became simple tense; “somewhat” disappeared
+from the unconventional-implementation example; and the workshop example lost
+the explicit employee role. The software-update result also changed “has reported”
+and “is causing” to simple-present wording. The instructions ask to preserve these
+distinctions, but this Qwen run did not consistently comply. Convergence is therefore
+a bounded completion rule, not an automated semantic-fidelity check.

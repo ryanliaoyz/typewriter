@@ -25,7 +25,7 @@ export default function DebugInspector({ state, failures = [], retry }: Props) {
   return (
     <details className="debug-inspector">
       <summary>Debug state</summary>
-      <p>A local-first grammar editor, in development. Completed sentences are checked with your configured Ollama server.</p>
+      <p>A local-first writing editor, in development. Completed sentences are checked with your configured Ollama server for grammar and meaning-preserving compression.</p>
       <p>Compare suggestions below your draft. Accept and reject controls are coming next. Your writing is never automatically replaced.</p>
       {failures.map(({ sentence, message, details }) => (
         <div role="alert" key={sentence.id}>

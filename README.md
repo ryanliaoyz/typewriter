@@ -1,8 +1,8 @@
 # Typewriter
 
-A local-first grammar editor in development, built with React, TypeScript, and
-Vite. The goal is to check completed sentences with a local model and let you
-accept or reject conservative corrections.
+A local-first writing editor in development, built with React, TypeScript, and
+Vite. The goal is to offer grammar corrections and concise rewrites that preserve
+meaning, with user-controlled acceptance or rejection.
 
 ## What works today
 
@@ -12,8 +12,8 @@ accept or reject conservative corrections.
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
-  using `prompt.txt`. Changed responses must pass an unchanged second check before
-  appearing as suggestions. Select highlighted sentences in the review view to compare
+  using `prompt.txt`. Candidates are refined until unchanged, within five passes,
+  before appearing as suggestions. Select highlighted sentences in the review view to compare
   original and suggested text without rewriting your draft. Failure details and
   Retry and Show response buttons currently live only in development **Debug state**; accept/reject
   controls remain planned.

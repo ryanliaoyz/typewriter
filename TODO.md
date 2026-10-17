@@ -13,6 +13,7 @@
 - [x] Discard stale responses; expose failures with a retry action.
 - [x] Highlight sentences with suggestions and show original/corrected text.
 - [x] Evaluate output-only/stability contracts, tighten conservative editing rules, and withhold unstable suggestions.
+- [x] Enable meaning-preserving compression with bounded refinement to convergence.
 - [ ] Implement version-safe accept and per-version reject actions.
 - [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [ ] Evaluate corrections with `tests.txt` and document runnable setup commands.

@@ -13,7 +13,8 @@ accept or reject conservative corrections.
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
   using `prompt.txt`. Results are cached without rewriting text; development JSON
-  shows suggestions. Failures stay unchecked; review/retry controls are not available yet.
+  shows suggestions. Failures stay unchecked and have per-sentence Retry buttons;
+  suggestion review controls are not available yet.
 
 ## Quickstart
 

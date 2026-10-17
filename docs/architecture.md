@@ -4,8 +4,8 @@
 
 Typewriter uses React + TypeScript + Vite. The editor, segmentation,
 reconciliation, result cache, sequential queue, and Ollama HTTP integration are
-implemented. Basic response validation and version-safe caching are connected;
-dedicated retry controls, highlighting, and accept/reject actions remain planned.
+implemented. Response validation, version-safe caching, and per-sentence failure
+notices with retry controls are connected; highlighting and accept/reject remain planned.
 
 ## Canonical document state
 
@@ -164,16 +164,21 @@ unit tests inject a fake checker.
 - Errors go to `onError`, never become clean results, and do not block other work.
   Current attempted versions are tracked to avoid duplicate requests and automatic
   retry loops on unchanged idle records. This bookkeeping stores no results or
-  historical versions; an edit permits a new attempt. Explicit retry/error UI is
-  a later TODO.
+   historical versions; an edit permits a new attempt. A separate map tracks only
+   current failed captures, pruned on updates alongside attempted versions.
+- `retry(capture)` accepts only a matching failed version, clears its failed and
+   attempted markers, and appends it to the FIFO tail. It returns whether the retry
+   was accepted. Active, repeated, stale, checked, and disposed retries are ignored.
+   Retries respect the active slot and any edit debounce; otherwise they can start
+   immediately. A failed retry requires another explicit action (invariants 4–6, 10).
 - `getSnapshot()` exposes pending captures, the active capture, and whether the
   debounce timer is running. `dispose()` cancels the timer, clears pending work,
   and suppresses callbacks and further scheduling. It does not cancel an active
   checker; the active slot remains until settlement.
 
 Unit tests use fake timers and deferred promises, not a running model. HTTP client
-integration and editor wiring are described below; explicit retry actions remain
-separate work. Queue activity is not stored as `queued` or `checking` statuses in
+integration and editor wiring are described below. Queue activity is not stored as
+`queued` or `checking` statuses in
 the current sentence records.
 
 ## Model configuration and development proxy
@@ -263,10 +268,10 @@ request. Edits do not abort the active request or release its slot early.
 ## Editor session and checking lifecycle
 
 [`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) owns
-the canonical sentence-document state, one sequential queue, and the latest
-current failure notice. It consumes textarea edits and asynchronous client results,
-and produces state, an `updateText` action, and an optional error message for the
-UI (invariants 1, 4–6, and 10).
+the canonical sentence-document state, one sequential queue, and current failures
+by sentence occurrence. It consumes textarea edits, retry actions, and asynchronous
+client results, and produces state, `updateText` and `retry` actions, and a failure
+list for the UI (invariants 1, 4–6, and 10).
 
 Every edit reconciles state and immediately feeds it to the queue. A current-state
 reference is updated before publishing React state, so a model response always
@@ -275,24 +280,28 @@ responses use `cacheSentenceResult` and feed the resulting cache state back into
 the queue without restarting the debounce. Stale results are discarded by the
 cache's ID/version/text guard. Error notices are also restricted to matching
 captures; they disappear when the failed occurrence changes or is deleted, not
-when only its offsets move. No failure is stored as clean. The notice currently
-shows only the latest matching failure, not a full per-sentence error list.
+when only its offsets move. No failure is stored as clean. Each failure contains
+the captured ID, version, input text, and message, so identical sentences have
+independent notices. Edits prune obsolete failures rather than hiding old notices.
+Retry validates against the latest document and delegates to the queue; an accepted
+retry removes that notice. Another failure restores it, and success clears it.
 
 The queue is created in a mount effect and disposed on unmount, with request
 cancellation. React Strict Mode's initial effect replay creates no extra requests:
 the first queue is disposed before its debounce can expire. Scheduling side effects
-are not placed inside React state updaters. Explicit retry actions and richer
-per-sentence error state remain the next TODO; currently users must fix setup and
-reload/re-paste a saved draft, or edit the failed sentence to trigger a new version.
+are not placed inside React state updaters. Failure references are also updated
+before publishing React state so closely spaced callbacks preserve every failure.
 
 ## Editor and development inspector
 
 [`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
-actions from `useSentenceEditor`, along with a basic failure notice. Drafts live
+actions from `useSentenceEditor`, along with one alert per failed sentence showing
+its text, error, and a native **Retry** button. Drafts live
 only in the current page session; no persistence is implemented. It explains that
 completed sentences are sent to the configured server, that review controls are
 not available yet, and that writing is never replaced automatically (invariants
-1 and 9). Save drafts before reloading to retry setup failures.
+1 and 9). After fixing server setup, retry failed sentences without reloading or
+changing the draft. Failure controls also implement invariant 10.
 
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
 live state used by the textarea. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
@@ -353,8 +362,8 @@ model request. When the response arrives:
 2. If the valid returned text matches the input, mark the record clean.
 3. Otherwise, store a suggestion; highlighting remains planned.
 
-Server failures or unusable responses remain unchecked and show a basic notice;
-dedicated retry controls are planned. Clicking a future highlighted sentence will
+Server failures or unusable responses remain unchecked and show per-sentence
+notices with retry controls. Clicking a future highlighted sentence will
 show its original and proposed text:
 
 - **Accept:** verify the current version, replace only its current range, and
@@ -389,8 +398,10 @@ HTTP/network errors, invalid JSON, timeout, and cancellation. Editor integration
 tests mock fetch with fake timers and deferred responses to cover duplicate
 occurrences, incomplete text, shifted offsets, sequential execution, queued version
 replacement, edited/deleted stale results, failure continuation, and Strict Mode
-cleanup. None of these tests needs a running model. Suggestion actions and explicit
-retry tests will be added with their TODOs.
+cleanup. Retry tests cover independent duplicate failures, repeated failure and
+recovery, FIFO ordering, active-request and debounce constraints, stale retry
+captures, failure invalidation, and preservation of canonical text. None of these
+tests needs a running model. Suggestion-action tests remain planned.
 
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
 conservative corrections may be valid; [`output.txt`](../output.txt) is historical

@@ -10,7 +10,7 @@
 - [x] Streamline the README and move module details to `docs/architecture.md`.
 - [x] Document Ollama as the cross-platform v1 runtime; defer `llama-server` support.
 - [x] Integrate Ollama on Linux, macOS, and Windows using `prompt.txt`, a configurable model/server URL, and a development proxy.
-- [ ] Discard stale responses; expose failures with a retry action.
+- [x] Discard stale responses; expose failures with a retry action.
 - [ ] Highlight sentences with suggestions and show original/corrected text.
 - [ ] Implement version-safe accept and per-version reject actions.
 - [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.

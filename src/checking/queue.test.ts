@@ -38,6 +38,49 @@ describe('debounced sequential sentence queue', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
+  it('retries once at the FIFO tail, respecting active work and edit debounce', async () => {
+    const { queue, check, requests } = harness()
+    let state = createSentenceDocument('First. Second. Third.')
+    const failed = state.sentences[0]
+    queue.update(state)
+    await vi.advanceTimersByTimeAsync(400)
+    requests[0].reject(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(check).toHaveBeenCalledTimes(2)
+    state = updateSentenceDocument(state, '  First. Second. Third.')
+    queue.update(state)
+    expect(queue.retry(failed)).toBe(true)
+    expect(queue.retry(failed)).toBe(false)
+    expect(queue.getSnapshot().pending.map((sentence) => sentence.text)).toEqual(['Third.', 'First.'])
+    requests[1].resolve({ status: 'clean' })
+    await vi.advanceTimersByTimeAsync(399)
+    expect(check).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(check).toHaveBeenCalledTimes(3)
+    requests[2].resolve({ status: 'clean' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(check).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'First.' }))
+    expect(check).toHaveBeenCalledTimes(4)
+    queue.dispose()
+  })
+
+  it.each(['Changed.', '', 'First. Second.'])('rejects stale retries after replacing First. with %s', async (text) => {
+    const { queue, requests } = harness()
+    const state = createSentenceDocument('First.')
+    const failed = state.sentences[0]
+    queue.update(state)
+    await vi.advanceTimersByTimeAsync(400)
+    requests[0].reject(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(0)
+    // A changed/deleted occurrence or an explicitly checked record is ineligible.
+    let next = updateSentenceDocument(state, text)
+    if (text === 'First. Second.') next = cacheSentenceResult(next, failed, { status: 'clean' })
+    queue.update(next)
+    expect(queue.retry(failed)).toBe(false)
+    queue.dispose()
+    expect(queue.retry(failed)).toBe(false)
+  })
+
   it('waits 400 ms and resets the timer for each actual edit', async () => {
     const { queue, check } = harness()
     let state = createSentenceDocument('First.')

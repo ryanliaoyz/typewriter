@@ -16,9 +16,15 @@ function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolea
 /** Own one document session and queue; publish transitions before more work runs. */
 export function useSentenceEditor() {
   const [state, setState] = useState(() => createSentenceDocument())
-  const [failure, setFailure] = useState<Failure | null>(null)
+  const [failures, setFailures] = useState<readonly Failure[]>([])
+  const currentFailures = useRef<readonly Failure[]>([])
   const current = useRef(state)
   const queue = useRef<ReturnType<typeof createSentenceQueue> | null>(null)
+
+  function publishFailures(next: readonly Failure[]): void {
+    currentFailures.current = next
+    setFailures(next)
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -29,14 +35,19 @@ export function useSentenceEditor() {
     const sessionQueue = createSentenceQueue({
       check: createOllamaChecker({ model: config.model, serverUrl: config.requestUrl, signal: controller.signal }),
       onResult: (sentence, result) => {
+        if (!isCurrent(current.current, sentence)) return
         const next = cacheSentenceResult(current.current, sentence, result)
         current.current = next
         setState(next)
+        publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
         sessionQueue.update(next)
       },
       onError: (sentence, error) => {
         if (isCurrent(current.current, sentence)) {
-          setFailure({ sentence, message: error instanceof Error ? error.message : 'Ollama check failed.' })
+          publishFailures([
+            ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
+            { sentence, message: error instanceof Error ? error.message : 'Ollama check failed.' },
+          ])
         }
       },
     })
@@ -53,8 +64,16 @@ export function useSentenceEditor() {
     const next = updateSentenceDocument(current.current, text)
     current.current = next
     setState(next)
+    publishFailures(currentFailures.current.filter((failure) => isCurrent(next, failure.sentence)))
     queue.current?.update(next)
   }
 
-  return { state, updateText, error: failure && isCurrent(state, failure.sentence) ? failure.message : null }
+  function retry(sentence: SentenceCheck): void {
+    if (!isCurrent(current.current, sentence)) return
+    if (queue.current?.retry(sentence)) {
+      publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
+    }
+  }
+
+  return { state, updateText, failures, retry }
 }

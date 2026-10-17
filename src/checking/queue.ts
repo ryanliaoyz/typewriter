@@ -37,6 +37,7 @@ export function createSentenceQueue({ check, onResult, onError }: SentenceQueueO
   // Only current attempted versions, not successful results or version history.
   // Prevent unchanged idle/failed records from being retried on every state update.
   const attempted = new Map<string, SentenceCheck>()
+  const failed = new Map<string, SentenceCheck>()
   let active: SentenceCheck | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let documentText: string | undefined
@@ -49,7 +50,10 @@ export function createSentenceQueue({ check, onResult, onError }: SentenceQueueO
       try {
         result = await check(sentence)
       } catch (error) {
-        if (!disposed) onError(sentence, error)
+        if (!disposed) {
+          if (sameCheck(attempted.get(sentence.id), sentence)) failed.set(sentence.id, sentence)
+          onError(sentence, error)
+        }
         return
       }
       if (!disposed) onResult(sentence, result)
@@ -79,6 +83,10 @@ export function createSentenceQueue({ check, onResult, onError }: SentenceQueueO
     for (const [id, sentence] of attempted) {
       const record = eligible.get(id)
       if (!record || !sameCheck(sentence, record)) attempted.delete(id)
+    }
+    for (const [id, sentence] of failed) {
+      const record = eligible.get(id)
+      if (!record || !sameCheck(sentence, record)) failed.delete(id)
     }
     for (const id of pending.keys()) {
       if (!eligible.has(id)) pending.delete(id)
@@ -110,13 +118,23 @@ export function createSentenceQueue({ check, onResult, onError }: SentenceQueueO
     return { pending: [...pending.values()], active, debouncing: timer !== undefined }
   }
 
+  function retry(sentence: SentenceCheck): boolean {
+    if (disposed || !sameCheck(failed.get(sentence.id), sentence) || sameCheck(active, sentence)) return false
+    failed.delete(sentence.id)
+    attempted.delete(sentence.id)
+    pending.set(sentence.id, sentence)
+    drain()
+    return true
+  }
+
   function dispose(): void {
     disposed = true
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
     pending.clear()
     attempted.clear()
+    failed.clear()
   }
 
-  return { update, getSnapshot, dispose }
+  return { update, retry, getSnapshot, dispose }
 }

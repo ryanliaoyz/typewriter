@@ -250,7 +250,7 @@ no React, queue, or document-state dependencies beyond shared types (invariants
 `createOllamaChecker` sends a non-streaming POST to `/v1/chat/completions`, with
 the exact contents of [`prompt.txt`](../prompt.txt) imported as a raw system
 message and the sentence as the user message. IDs, versions, document whitespace,
-and offsets are not sent. Temperature is 0 and the response limit is 1024 tokens.
+and offsets are not sent. Temperature is 0 and the response limit is 2048 tokens.
 No API key, model-management API, or Python service is needed.
 
 The client requires one assistant choice with `finish_reason: 'stop'`, nonempty

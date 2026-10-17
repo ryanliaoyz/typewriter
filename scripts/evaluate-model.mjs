@@ -7,6 +7,11 @@ const samples = (await readFile(new URL('../tests.txt', import.meta.url), 'utf8'
 samples.push(
   'Irregardless of the fact that we spent a substantial total amount of six whole hours discussing about the matter, little progress was actually made due to the reason that the internet connection was running slow.',
   'Although the team had all the necessary prerequesits in order to begin the task at hand, none of the managers were able to clearly define what the exact main objective was, which caused alot of confussion.',
+  'Furthermore, each and every person who participated in the meeting has given their own different opinion on how to best solve the pending issue.',
+  'Furthermore, each person who participated in the meeting offered a different opinion on how best to solve the pending issue.',
+  'Furthermore, each person who participated in the meeting has given a different opinion on how best to solve the pending issue.',
+  'Every employee who attended the workshop has shared a separate proposal for resolving the outstanding problem.',
+  'The measurements were somewhat unusual, but they have remained approximately consistent.',
 )
 
 async function check(text) {

@@ -426,10 +426,15 @@ diffs locally. The model should not produce character offsets or edit metadata.
 Model responses must never silently replace canonical editor text.
 
 `prompt.txt` asks the model to correct spelling, grammar, punctuation, and
-objectively incorrect word usage with minimal changes. It also permits removing
-obvious verbal clutter when meaning and nuance are preserved. The goal is
-conservative copy editing, not stylistic rewriting. Correct, clear sentences
-should be returned unchanged; suggestions always require user approval.
+objectively incorrect word usage with minimal local changes. Clutter removal is
+limited to unmistakable repeated meaning with no emphasis or nuance, without
+recasting the surrounding clause. Tense and aspect must stay unless the verb form
+is incorrect. Optional shortening, synonym substitutions, and removal of qualifiers
+or contrast are explicitly forbidden. The final review must fix remaining objective
+errors and undo unnecessary changes, not start another polishing pass. Correct
+sentences should be returned unchanged even when a shorter version is possible;
+suggestions always require user approval. These are model instructions, not a
+guarantee of compliance.
 
 ## Testing and evaluation
 
@@ -467,9 +472,11 @@ and guidance for coding agents.
 ### Output-contract and stability evaluation
 
 [`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) reads `prompt.txt`
-and `tests.txt`, adds the two long sentences reported during manual testing, and
-sends each input and then its candidate output to Ollama sequentially. It prints
-JSON lines containing both raw envelopes and an equality-based stability flag for
+and `tests.txt`, adds the two long sentences reported during manual testing, the
+meeting sentence and two corrected variants, and two additional tense/qualifier
+preservation cases (31 inputs total). It sends each input and then its candidate
+output to Ollama sequentially. It prints JSON lines containing both raw envelopes
+and an equality-based stability flag for
 manual review. It does not change editor state or use `output.txt` as an oracle.
 Run `OLLAMA_MODEL=qwen3.5:9b npm run evaluate:model` on Linux/macOS; in PowerShell,
 set `$env:OLLAMA_MODEL = 'qwen3.5:9b'` then run `npm run evaluate:model`.
@@ -478,7 +485,8 @@ model is the target Gemma tag. These script settings are separate from Vite's en
 files. The stability flag alone does not validate formatting or grammar: review
 the full outputs, particularly preservation of meaning and unnecessary rewrites.
 
-Local evaluation on 2026-10-17 with `qwen3.5:9b`, thinking disabled, temperature 0,
+Before tightening the prompt's anti-rewriting rules, local evaluation on
+2026-10-17 with `qwen3.5:9b`, thinking disabled, temperature 0,
 and a 2048-token limit: all 26 cases returned completed, plain-text responses on
 both passes; 20 candidates were unchanged on verification and 6 were revised again.
 The unstable cases were `tests.txt` samples 6, 9, 11, 13, and 20, plus the long
@@ -488,8 +496,26 @@ with “incorrect,” “several” with “multiple,” and “a lot of confusi
 intermediate suggestions. No commentary appeared in this run; this does not prove
 the model always follows the output-only contract.
 
-Quality issues remain even for stable responses: the long “Irregardless…” input
-only lost “about” after “discussing,” retaining its other clutter; the otherwise
-valid “somewhat unconventional” sample lost “somewhat” and “nevertheless,” reducing
-nuance. The target Gemma model has not been evaluated here. An unchanged second
-pass is a consistency check, not a guarantee that an edit is correct or conservative.
+That run also exposed quality issues even for stable responses: the long
+“Irregardless…” input only lost “about” after “discussing,” retaining its other
+clutter; the otherwise valid “somewhat unconventional” sample lost “somewhat” and
+“nevertheless,” reducing nuance. The target Gemma model has not been evaluated
+here. An unchanged second pass is a consistency check, not a guarantee that an
+edit is correct or conservative.
+
+After tightening the anti-rewriting rules on 2026-10-17, the expanded evaluation
+ran with local Ollama 0.18.2 and the same model/settings. All 31 cases returned
+completed plain-text responses on both passes. Stability improved from 20/26 to
+24/26 on the original inputs, and was 28/31 across the expanded set. The two
+corrected meeting variants stayed unchanged; the original meeting sentence kept
+“has given” and its relative clause instead of changing tense or shortening to
+“each participant.” The independent workshop and measurement examples also kept
+their tense, clauses, and qualifiers. All eight valid-prose inputs at the end of
+`tests.txt` were returned unchanged on both passes.
+
+Three inputs still failed stability: sample 6 continued swapping “wrong” for
+“incorrect”; the prerequisites sentence shortened phrases on verification; and
+the original meeting sentence removed “each and every” on the first pass, then
+removed “different” from “their own different opinion” on the second. The runtime
+guard withholds these candidates. The prompt is more conservative, but does not
+eliminate incremental rewriting or establish that a stable response is error-free.

@@ -1,7 +1,14 @@
 import { Fragment, useId, useRef, useState } from 'react'
-import type { SentenceDocumentState, SentenceRecord } from './document/sentences'
+import type { SentenceDocumentState, SentenceRecord, SuggestionCapture } from './document/sentences'
 
-export default function SuggestionReview({ state }: { state: SentenceDocumentState }) {
+type Props = {
+  state: SentenceDocumentState
+  accept: (capture: SuggestionCapture) => boolean
+  reject: (capture: SuggestionCapture) => boolean
+  focusEditor: () => void
+}
+
+export default function SuggestionReview({ state, accept, reject, focusEditor }: Props) {
   const [selection, setSelection] = useState<Pick<SentenceRecord, 'id' | 'version'> | null>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const headingId = useId()
@@ -18,6 +25,14 @@ export default function SuggestionReview({ state }: { state: SentenceDocumentSta
   function close() {
     setSelection(null)
     trigger.current?.focus()
+  }
+
+  function act(action: Props['accept']) {
+    if (selected?.status !== 'suggestion') return
+    if (action({ id: selected.id, version: selected.version, text: selected.text, suggestion: selected.suggestion })) {
+      setSelection(null)
+      focusEditor()
+    }
   }
 
   return (
@@ -55,6 +70,8 @@ export default function SuggestionReview({ state }: { state: SentenceDocumentSta
           <p>{selected.text}</p>
           <h4>Suggested</h4>
           <p>{selected.suggestion}</p>
+          <button type="button" onClick={() => act(accept)}>Accept suggestion</button>{' '}
+          <button type="button" onClick={() => act(reject)}>Reject suggestion</button>{' '}
           <button type="button" onClick={close}>Close comparison</button>
         </section>
       )}

@@ -11,7 +11,42 @@ export type SentenceCheckResult =
 export type SentenceRecord = SentenceSegment & {
   readonly id: string
   readonly version: number
-} & (SentenceCheckResult | { readonly status: 'idle', readonly suggestion?: never })
+} & (SentenceCheckResult | { readonly status: 'idle' | 'rejected', readonly suggestion?: never })
+
+export type SuggestionCapture = Pick<SentenceRecord, 'id' | 'version' | 'text'> & {
+  readonly suggestion: string
+}
+
+function currentSuggestion(state: SentenceDocumentState, capture: SuggestionCapture) {
+  return state.sentences.find((record) => record.id === capture.id &&
+    record.version === capture.version && record.text === capture.text &&
+    record.status === 'suggestion' && record.suggestion === capture.suggestion &&
+    state.document.text.slice(record.start, record.end) === record.text)
+}
+
+/** Apply the displayed suggestion using its occurrence's current range. */
+export function acceptSentenceSuggestion(
+  previous: SentenceDocumentState,
+  capture: SuggestionCapture,
+): SentenceDocumentState {
+  const record = currentSuggestion(previous, capture)
+  if (!record) return previous
+  const edit = { start: record.start, end: record.end, insertedText: capture.suggestion }
+  const text = previous.document.text.slice(0, edit.start) + edit.insertedText + previous.document.text.slice(edit.end)
+  return reconcileDocument(previous, { text, edit })
+}
+
+/** Suppress this version without treating it as a model-verified clean result. */
+export function rejectSentenceSuggestion(
+  previous: SentenceDocumentState,
+  capture: SuggestionCapture,
+): SentenceDocumentState {
+  const record = currentSuggestion(previous, capture)
+  if (!record) return previous
+  const { suggestion: _suggestion, ...rest } = record
+  return { ...previous, sentences: previous.sentences.map((sentence) =>
+    sentence === record ? { ...rest, status: 'rejected' } : sentence) }
+}
 
 export type SentenceDocumentState = {
   readonly document: DocumentState
@@ -73,6 +108,11 @@ export function updateSentenceDocument(
   text: string,
 ): SentenceDocumentState {
   const document = updateDocument(previous.document, text)
+  return reconcileDocument(previous, document)
+}
+
+function reconcileDocument(previous: SentenceDocumentState, document: DocumentState): SentenceDocumentState {
+  const { text } = document
   const edit = document.edit
   if (edit === null) {
     return { ...previous, document }

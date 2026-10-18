@@ -13,10 +13,11 @@ meaning, with user-controlled acceptance or rejection.
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
   using `prompt.txt`. Candidates are refined until unchanged, within five passes,
-  before appearing as suggestions. Select highlighted sentences in the review view to compare
-  original and suggested text without rewriting your draft. Failure details and
-  Retry and Show response buttons currently live only in development **Debug state**; accept/reject
-  controls remain planned.
+   before appearing as suggestions. Select highlights to compare original and
+   suggested text, then accept or reject. Accept replaces only the current sentence;
+   reject suppresses that version until edited. Both work in development and production.
+   Failure details and Retry and Show response buttons currently live only in
+   development **Debug state**.
 
 ## Quickstart
 

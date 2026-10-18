@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import SuggestionReview from './SuggestionReview'
+import { describe, expect, it, vi } from 'vitest'
+import Review from './SuggestionReview'
 import { cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from './document/sentences'
+
+function SuggestionReview({ state }: { state: Parameters<typeof Review>[0]['state'] }) {
+  return <Review state={state} accept={() => false} reject={() => false} focusEditor={() => {}} />
+}
 
 function suggested(text = 'They works. They works.') {
   let state = createSentenceDocument(text)
@@ -12,6 +16,22 @@ function suggested(text = 'They works. They works.') {
 }
 
 describe('SuggestionReview', () => {
+  it.each(['Accept suggestion', 'Reject suggestion'])('sends the displayed capture for %s and restores editor focus', (label) => {
+    const state = suggested()
+    const accept = vi.fn(() => true)
+    const reject = vi.fn(() => true)
+    const focusEditor = vi.fn()
+    render(<Review state={state} accept={accept} reject={reject} focusEditor={focusEditor} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'They works.' })[1])
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    const record = state.sentences[1]
+    expect(label === 'Accept suggestion' ? accept : reject).toHaveBeenCalledExactlyOnceWith({
+      id: record.id, version: record.version, text: record.text, suggestion: record.suggestion,
+    })
+    expect(focusEditor).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('region', { name: 'Sentence comparison' })).not.toBeInTheDocument()
+  })
+
   it('preserves document whitespace and Unicode and treats suggestions as text', () => {
     const text = '  They works.\n\n\tThey works.  😀 Unfinished'
     const state = suggested(text)

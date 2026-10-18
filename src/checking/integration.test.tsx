@@ -34,6 +34,37 @@ afterEach(() => {
 })
 
 describe('editor → queue → Ollama integration', () => {
+  it.each(['Accept suggestion', 'Reject suggestion'])('applies %s and keeps the queue sequential', async (action) => {
+    const active = deferred()
+    const fetch = vi.fn().mockResolvedValueOnce(response('They work.'))
+      .mockResolvedValueOnce(response('They work.')).mockReturnValueOnce(active.promise)
+      .mockResolvedValue(response('They work.'))
+    vi.stubGlobal('fetch', fetch)
+    const { container } = render(<App />)
+    const editor = screen.getByRole('textbox')
+    fireEvent.change(editor, { target: { value: 'They works. Next.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    fireEvent.click(screen.getByRole('button', { name: 'They works.' }))
+    fireEvent.click(screen.getByRole('button', { name: action }))
+    expect(screen.queryByRole('region', { name: 'Sentence comparison' })).not.toBeInTheDocument()
+    expect(editor).toHaveFocus()
+    const accepted = action === 'Accept suggestion'
+    expect(editor).toHaveValue(accepted ? 'They work. Next.' : 'They works. Next.')
+    expect(readState(container).sentences[0].status).toBe(accepted ? 'idle' : 'rejected')
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    active.resolve(response('Next.'))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(accepted ? 4 : 3)
+    if (!accepted) {
+      fireEvent.change(editor, { target: { value: 'They work. Next.' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      expect(fetch).toHaveBeenCalledTimes(4)
+    }
+    expect(readState(container).sentences[0].status).toBe('clean')
+  })
+
   it('holds the queue through multiple refinements and discards a suggestion deleted during a later pass', async () => {
     const verification = deferred()
     const fetch = vi.fn().mockResolvedValueOnce(response('They work.'))

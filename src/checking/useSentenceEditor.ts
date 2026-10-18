@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
-import type { SentenceDocumentState } from '../document/sentences'
+import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
+import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
 import { createOllamaChecker, UnusableResponseError } from './ollama'
 import { createSentenceQueue } from './queue'
@@ -65,7 +65,11 @@ export function useSentenceEditor() {
   }, [])
 
   function updateText(text: string): void {
-    const next = updateSentenceDocument(current.current, text)
+    publish(updateSentenceDocument(current.current, text))
+  }
+
+  function publish(next: SentenceDocumentState): void {
+    if (next === current.current) return
     current.current = next
     setState(next)
     publishFailures(currentFailures.current.filter((failure) => isCurrent(next, failure.sentence)))
@@ -79,5 +83,19 @@ export function useSentenceEditor() {
     }
   }
 
-  return { state, updateText, failures, retry }
+  function accept(capture: SuggestionCapture): boolean {
+    const next = acceptSentenceSuggestion(current.current, capture)
+    if (next === current.current) return false
+    publish(next)
+    return true
+  }
+
+  function reject(capture: SuggestionCapture): boolean {
+    const next = rejectSentenceSuggestion(current.current, capture)
+    if (next === current.current) return false
+    publish(next)
+    return true
+  }
+
+  return { state, updateText, failures, retry, accept, reject }
 }

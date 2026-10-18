@@ -6,7 +6,7 @@ Typewriter uses React + TypeScript + Vite. The editor, segmentation,
 reconciliation, result cache, sequential queue, and Ollama HTTP integration are
 implemented. Response validation, version-safe caching, and per-sentence failure
 notices with retry controls are connected. Sentence highlights and original/suggested
-comparisons are available; accept/reject remain planned.
+comparisons and version-safe accept/reject actions are available.
 
 ## Canonical document state
 
@@ -30,6 +30,8 @@ The range is inferred from the common prefix and suffix of two snapshots, not
 from a browser edit operation. Equivalent edits within repeated text can be
 ambiguous; multiple changed portions are enclosed in a single replacement.
 Only the latest transition is retained, not an edit history.
+Suggestion acceptance supplies its known replacement range directly to sentence
+reconciliation instead of inferring a range from snapshots.
 
 ## Sentence segmentation
 
@@ -76,7 +78,7 @@ The textarea uses these functions for every change. State has `document`,
 the segment's `start`, `end`, `text`, and `complete` fields plus:
 
 ```ts
-{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' }
+{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' | 'rejected' }
 ```
 
 - New occurrences start at version 1 with independent IDs, including duplicates.
@@ -137,6 +139,26 @@ unchecked with fresh IDs while untouched anchors retain their results.
 The HTTP client validates and classifies responses before the editor-session
 module passes them to this cache. Failed requests never reach the cache.
 
+### Suggestion actions
+
+`acceptSentenceSuggestion` and `rejectSentenceSuggestion` in
+`src/document/sentences.ts` consume current state and a capture of the occurrence
+ID, version, original text, and suggestion. They return immutable state, or the
+original state for stale/repeated actions. Both verify suggestion status and the
+canonical text slice as well as the captured fields (invariants 1–4 and 9).
+
+Accept replaces only the current range, preserving surrounding whitespace, and
+reconciles with that explicit edit. This avoids ambiguity when replacement text
+repeats neighboring sentences. Changed one-to-one records increment their version;
+splits/merges follow normal reconciliation. Resulting unchecked complete sentences
+use the normal queue rather than being assumed clean.
+
+Reject removes the suggestion and marks that occurrence/version `rejected`, not
+model-verified `clean`. It changes no document text or version. Reconciliation
+retains rejection through offset/whitespace-only changes; content edits reset the
+record to `idle`. The queue schedules only `idle` records, so rejected versions
+do not get rechecked automatically (invariants 5–6 and 9).
+
 ## Debounced sequential queue
 
 [`src/checking/queue.ts`](../src/checking/queue.ts) is independent of React and
@@ -147,7 +169,8 @@ only `{ id, version, text }` and returns a promise of an already classified
 unit tests inject a fake checker.
 
 - Feed every document or cache transition to `queue.update(state)`. Only complete,
-  unchecked (`idle`) records are eligible; clean and suggestion records are skipped.
+  unchecked (`idle`) records are eligible; clean, suggestion, and rejected records
+  are skipped.
 - Actual document edits restart a **400 ms** document-wide debounce. Unchanged
   input and cache-only updates do not restart it. Pending work is reconciled
   immediately, even while waiting for the timer or an active check.
@@ -309,9 +332,10 @@ starts after unmount. Edits do not abort the active request or release its slot 
 
 [`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) owns
 the canonical sentence-document state, one sequential queue, and current failures
-by sentence occurrence. It consumes textarea edits, retry actions, and asynchronous
-client results, and produces state, `updateText` and `retry` actions, and a failure
-list for the UI (invariants 1, 4–6, and 10).
+by sentence occurrence. It consumes textarea edits, retry and suggestion actions,
+and asynchronous client results, and produces state, `updateText`, `retry`,
+`accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
+9, and 10).
 
 Every edit reconciles state and immediately feeds it to the queue. A current-state
 reference is updated before publishing React state, so a model response always
@@ -325,6 +349,9 @@ the captured ID, version, input text, and message, so identical sentences have
 independent notices. Edits prune obsolete failures rather than hiding old notices.
 Retry validates against the latest document and delegates to the queue; an accepted
 retry removes that notice. Another failure restores it, and success clears it.
+Accept/reject also validate against the latest state reference before publication,
+prune obsolete failures, and update the queue. They return whether an action applied.
+Acceptance restarts the normal edit debounce; rejection does not change the text.
 
 The queue is created in a mount effect and disposed on unmount, with request
 cancellation. React Strict Mode's initial effect replay creates no extra requests:
@@ -339,8 +366,8 @@ actions from `useSentenceEditor`. It passes current sentence state to
 the suggestion review component below the textarea. Drafts live
 only in the current page session; no persistence is implemented. The development
 inspector holds introductory copy explaining that
-completed sentences are sent to the configured server, that accept/reject controls
-are coming next, and that writing is never replaced automatically (invariants
+completed sentences are sent to the configured server, that suggestions can be
+accepted or rejected, and that writing is never replaced automatically (invariants
 1 and 9). After fixing server setup, retry failed sentences without reloading or
 changing the draft. Failure controls also implement invariant 10. For now, failure
 details and Retry buttons live exclusively inside the collapsed **Debug state**
@@ -358,8 +385,9 @@ Completion means eligible for scheduling, not a grammar-check
 result. This read-only view consumes session state without a separate cache or
 segmentation pipeline (invariants 1 and 2).
 
-The latest inferred edit references the **previous** document's range; it is not
-an edit history. Expand **Raw state JSON** to see the entire state, including
+The latest edit (inferred for typing, explicit for acceptance) references the
+**previous** document's range; it is not an edit history. Expand **Raw state JSON**
+to see the entire state, including
 canonical whitespace and the session-local ID counter. The inspector adds no
 separate segmentation pipeline. It is gated by Vite's `import.meta.env.DEV` and
 is absent from production builds and `npm run preview`.
@@ -379,8 +407,8 @@ For manual validation:
 ## Suggestion review
 
 [`src/SuggestionReview.tsx`](../src/SuggestionReview.tsx) consumes the current
-sentence-document state and produces a read-only document view plus an optional
-original/suggested comparison panel. The textarea remains the editable source of
+sentence-document state and accept/reject/focus callbacks, and produces a read-only
+document view plus an optional original/suggested comparison panel. The textarea remains the editable source of
 truth. The view slices canonical text at current UTF-16 suggestion ranges, preserving
 all intervening text, whitespace, and unfinished prose. Whole-sentence highlights
 are native buttons with keyboard activation, visible focus, and expanded state.
@@ -393,9 +421,13 @@ Duplicate sentences remain independent. Closing the panel returns focus to the
 highlight. An empty state does not imply that unchecked sentences are clean.
 [`src/styles.css`](../src/styles.css) supplies whitespace-preserving layout,
 wrapping, highlight colors, and focus styles. No document or cache changes are
-made by review controls; accept/reject actions remain planned.
+made by closing the panel. Accept/reject buttons send the currently displayed
+capture to the session; after a successful action the panel closes and focus
+returns to the editor because the highlight is removed. `src/App.tsx` wires these
+callbacks and owns the textarea focus reference. Native buttons and the existing
+focus styles apply in both development and production.
 
-## Connected model integration and planned suggestion actions
+## Connected model integration and suggestion actions
 
 ```text
 Editor sentence state → sequential queue → HTTP client → Ollama
@@ -408,8 +440,8 @@ Editor sentence state → sequential queue → HTTP client → Ollama
 The HTTP client and development proxy are connected as described above. The
 application uses Ollama directly without a Python service, database, Redis, or
 worker system. See the [model server setup](../README.md#model-server-setup) for
-platform validation limits. Highlighting is implemented; accept/reject controls in
-the diagram remain planned.
+platform validation limits. Highlighting and accept/reject controls in
+the diagram are implemented.
 
 Gemma 2 9B Q4_K_M remains the target model pending evaluation with Ollama; choosing
 the runtime does not establish model availability or correction quality.
@@ -428,7 +460,7 @@ model request. When the response arrives:
 
 Server failures or unusable responses remain unchecked and show per-sentence
 notices with retry controls. Clicking a highlighted sentence shows its original
-and proposed text. Planned actions are:
+and proposed text. Available actions are:
 
 - **Accept:** verify the current version, replace only its current range, and
   reconcile the updated document.
@@ -484,7 +516,10 @@ integration with cached model responses without rewriting the editor. Refinement
 tests cover multi-pass convergence, original/candidate cycles, exhaustion of the
 pass budget, convergence at the limit, failure propagation, cancellation, queue
 blocking until convergence, stale results, and retry after a cycle.
-Suggestion-action tests remain planned.
+Suggestion-action tests cover guarded and repeated actions, duplicates, explicit
+replacement ranges, offset shifts, whitespace and Unicode preservation, split
+replacement text, per-version rejection, focus restoration, and actions during
+active inference without concurrent requests.
 
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
 meaning-preserving edits may be valid; [`output.txt`](../output.txt) is historical

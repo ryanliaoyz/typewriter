@@ -365,7 +365,8 @@ before publishing React state so closely spaced callbacks preserve every failure
 ## Editor and development inspector
 
 [`src/App.tsx`](../src/App.tsx) connects `useSentenceEditor` state and actions to
-the single CodeMirror writing surface described below. Drafts live only in the
+the single CodeMirror writing surface described below, beneath a compact wordmark
+header with a decorative, screen-reader-hidden accent. Drafts live only in the
 current page session; no persistence is implemented. The editor has an accessible
 name without a visible label or instructional copy. The inspector retains its
 controls and state data (invariants 1 and 9).
@@ -443,7 +444,15 @@ works in development and production.
 
 [`src/styles.css`](../src/styles.css) consumes editor/card class names and supplies
 prose typography, sentence highlights, focus indicators, and a viewport-bounded,
-scrollable comparison card. It changes presentation only (invariants 1 and 9).
+scrollable comparison card. Shared CSS variables define a warm neutral canvas,
+white writing surface, muted green accent, borders, and text colors. The editor
+uses 18px prose text with generous line spacing; padding tightens on small screens.
+The card groups primary Accept and secondary Reject actions, with a compact close
+button retaining the accessible name **Close comparison**. Debug state stays
+visually subdued. Focus indicators and forced-color styles preserve keyboard
+visibility. There are no external fonts, added UI dependencies, animations, or
+changes to checking behavior. This module changes presentation only (invariants
+1 and 9).
 
 ## Connected model integration and suggestion actions
 

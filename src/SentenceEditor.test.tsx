@@ -61,6 +61,22 @@ describe('SentenceEditor', () => {
     expect(editor).toHaveFocus()
   })
 
+  it('gives the compact close control an accessible name and dismisses without applying an action', () => {
+    const state = suggested()
+    const accept = vi.fn(() => false)
+    const reject = vi.fn(() => false)
+    render(<SentenceEditor state={state} {...actions} accept={accept} reject={reject} />)
+    fireEvent.click(highlights()[0])
+    const close = screen.getByRole('button', { name: 'Close comparison' })
+    expect(close).toHaveTextContent('×')
+    fireEvent.click(close)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveFocus()
+    expect(readEditor(screen.getByRole('textbox'))).toBe(state.document.text)
+    expect(accept).not.toHaveBeenCalled()
+    expect(reject).not.toHaveBeenCalled()
+  })
+
   it.each(['They work. Last.', 'Last.', 'They. Works. Last.', 'They works Last.'])(
     'closes stale comparisons after editing to %s and never reopens them on new results', text => {
       const state = suggested('They works. Last.')

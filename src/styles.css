@@ -1,9 +1,25 @@
 :root {
-  font-family: system-ui, sans-serif;
-  color: #242424;
-  background: #faf9f6;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--canvas);
   line-height: 1.5;
   font-synthesis: none;
+  color-scheme: light;
+  --canvas: #f6f5f1;
+  --surface: #fff;
+  --surface-muted: #f7f8f6;
+  --text: #292e2b;
+  --text-muted: #626a65;
+  --border: #dedfd9;
+  --accent: #32634e;
+  --accent-hover: #264e3d;
+  --focus: #387558;
+  --highlight: #edf2d9;
+  --highlight-line: #849153;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -11,50 +27,99 @@ body {
 }
 
 main {
-  max-width: 48rem;
-  margin: 4rem auto;
-  padding: 0 1.5rem;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 3rem 2rem 5rem;
 }
 
-h1 {
-  line-height: 1.2;
+.app-header {
+  margin-bottom: 2rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.3;
+}
+
+.brand-dot {
+  color: var(--accent);
+}
+
+button {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--surface-muted);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 
 .writing-editor .cm-editor {
-  box-sizing: border-box;
-  display: block;
   width: 100%;
-  min-height: 20rem;
-  border: 1px solid #777;
-  border-radius: 0.5rem;
+  min-height: 32rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
   color: inherit;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
+  box-shadow: 0 2px 4px #28372d03, 0 12px 40px #28372d04;
 }
 
 .writing-editor .cm-content {
-  min-height: 18rem;
-  padding: 1rem;
+  min-height: 32rem;
+  padding: 2.5rem;
   font-family: inherit;
   tab-size: 4;
+  caret-color: var(--accent);
+}
+
+.writing-editor .cm-line {
+  padding: 0;
 }
 
 .writing-editor .cm-scroller {
   font-family: inherit;
-  line-height: inherit;
+  font-size: 1.125rem;
+  line-height: 1.85;
+  border-radius: inherit;
 }
 
 .writing-editor .cm-editor.cm-focused {
-  outline: 2px solid #2457a7;
-  outline-offset: 2px;
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 
-.suggestion-comparison {
-  padding: 1rem;
-  border: 1px solid #aaa;
-  border-radius: 0.5rem;
-  background: #fff;
+.cm-tooltip.suggestion-comparison {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(32rem, 65vh);
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  color: var(--text);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.65;
   overflow-wrap: anywhere;
+  overflow: auto;
+  box-shadow: 0 4px 12px #28372d08, 0 16px 48px #28372d1a;
 }
 
 .suggestion-comparison p {
@@ -69,45 +134,87 @@ h1 {
   border-radius: 0.15rem;
   font: inherit;
   color: inherit;
-  background: #fff0ac;
+  background: var(--highlight);
   text-decoration: underline;
-  text-decoration-color: #806000;
+  text-decoration-color: var(--highlight-line);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
   white-space: inherit;
   overflow-wrap: anywhere;
   cursor: pointer;
 }
 
-.suggestion-comparison button:focus-visible {
-  outline: 2px solid #2457a7;
-  outline-offset: 2px;
-}
-
-.suggestion-comparison {
-  max-width: min(32rem, calc(100vw - 4rem));
-  max-height: 60vh;
-  overflow: auto;
-  box-shadow: 0 0.5rem 1.5rem #0002;
-}
-
-.suggestion-comparison button {
-  margin: 0.25rem 0.5rem 0.25rem 0;
+.sentence-highlight:hover {
+  background: #e4ecc6;
 }
 
 .suggestion-comparison h4 {
-  margin-bottom: 0.25rem;
+  margin: 0 2rem 0.5rem 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .suggestion-comparison p {
-  margin-top: 0;
+  margin: 0 0 1.25rem;
+}
+
+.comparison-original {
+  color: var(--text-muted);
+}
+
+.comparison-suggested {
+  padding-left: 0.875rem;
+  border-left: 2px solid var(--accent);
+}
+
+.comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.button-primary {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.button-primary:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.button-secondary {
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.comparison-close {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 1.375rem;
+  font-weight: 400;
 }
 
 .debug-inspector {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
   padding: 1rem;
-  border: 1px solid #aaa;
-  border-radius: 0.5rem;
-  background: #fff;
-  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 0.8125rem;
 }
 
 .debug-inspector summary {
@@ -117,8 +224,8 @@ h1 {
 
 .debug-inspector summary:focus-visible,
 .debug-table-scroll:focus-visible {
-  outline: 2px solid #2457a7;
-  outline-offset: 2px;
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 
 .debug-counts {
@@ -155,7 +262,7 @@ h1 {
 .debug-inspector th,
 .debug-inspector td {
   padding: 0.5rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
 }
@@ -167,13 +274,51 @@ h1 {
 
 .debug-inspector pre {
   padding: 0.75rem;
-  background: #f5f5f5;
+  background: var(--surface-muted);
 }
 
 .debug-response {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  background: #f5f5f5;
+  background: var(--surface-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  main {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .app-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .writing-editor .cm-content {
+    min-height: 28rem;
+    padding: 1.5rem 1.25rem;
+  }
+
+  .writing-editor .cm-editor {
+    min-height: 28rem;
+    border-radius: 0.875rem;
+  }
+
+  .cm-tooltip.suggestion-comparison {
+    padding: 1rem;
+  }
+
+  button {
+    min-height: 2.75rem;
+  }
+}
+
+@media (forced-colors: active) {
+  .sentence-highlight {
+    text-decoration-color: Highlight;
+  }
+
+  .comparison-suggested {
+    border-color: Highlight;
+  }
 }

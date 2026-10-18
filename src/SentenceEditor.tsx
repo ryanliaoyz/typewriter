@@ -73,26 +73,36 @@ export default function SentenceEditor(props: Props) {
           dom.className = 'suggestion-comparison'
           dom.setAttribute('role', 'dialog')
           dom.setAttribute('aria-label', 'Sentence comparison')
+          const closeButton = document.createElement('button')
+          closeButton.type = 'button'
+          closeButton.className = 'comparison-close'
+          closeButton.setAttribute('aria-label', 'Close comparison')
+          closeButton.textContent = '×'
           for (const [heading, text] of [['Original', capture.text], ['Suggested', capture.suggestion]]) {
             const label = dom.appendChild(document.createElement('h4'))
             label.textContent = heading
             const paragraph = dom.appendChild(document.createElement('p'))
+            paragraph.className = heading === 'Suggested' ? 'comparison-suggested' : 'comparison-original'
             paragraph.textContent = text
           }
           function close() {
             view.dispatch({ effects: select.of(null) })
             view.focus()
           }
-          for (const [label, action] of [
-            ['Accept suggestion', () => latest.current.accept(capture)],
-            ['Reject suggestion', () => latest.current.reject(capture)],
-            ['Close comparison', () => true],
+          const actions = dom.appendChild(document.createElement('div'))
+          actions.className = 'comparison-actions'
+          for (const [label, className, action] of [
+            ['Accept suggestion', 'button-primary', () => latest.current.accept(capture)],
+            ['Reject suggestion', 'button-secondary', () => latest.current.reject(capture)],
           ] as const) {
-            const button = dom.appendChild(document.createElement('button'))
+            const button = actions.appendChild(document.createElement('button'))
             button.type = 'button'
+            button.className = className
             button.textContent = label
             button.onclick = () => { if (action()) close() }
           }
+          closeButton.onclick = close
+          dom.appendChild(closeButton)
           dom.addEventListener('keydown', event => {
             if (event.key === 'Escape') { event.preventDefault(); close() }
           })

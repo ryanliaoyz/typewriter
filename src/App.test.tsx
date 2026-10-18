@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import { fireEvent, readEditor } from './test/editor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as sentenceDocument from './document/sentences'
@@ -23,7 +24,7 @@ describe('App', () => {
     render(<App />)
 
     const editor = screen.getByRole('textbox', { name: 'Your writing' })
-    expect(editor).toHaveValue('')
+    expect(readEditor(editor)).toBe('')
     expect(editor).not.toHaveAttribute('aria-describedby')
     expect(screen.queryByText('Your writing')).not.toBeInTheDocument()
     expect(screen.queryByText(/Write or paste plain text/)).not.toBeInTheDocument()
@@ -35,7 +36,7 @@ describe('App', () => {
 
     for (const text of ['A draft.', 'A new draft.', 'A new draft. 😀', '']) {
       fireEvent.change(editor, { target: { value: text } })
-      expect(editor).toHaveValue(text)
+      expect(readEditor(editor)).toBe(text)
     }
   })
 
@@ -46,7 +47,7 @@ describe('App', () => {
 
     fireEvent.change(editor, { target: { value: text } })
 
-    expect(editor).toHaveValue(text)
+    expect(readEditor(editor)).toBe(text)
     expect(screen.queryByText('Not markup')).not.toBeInTheDocument()
   })
 
@@ -57,7 +58,7 @@ describe('App', () => {
 
     for (const text of ['First. Last.', 'First. Inserted. Last.', 'First. Inserted! Last.']) {
       fireEvent.change(editor, { target: { value: text } })
-      expect(editor).toHaveValue(text)
+      expect(readEditor(editor)).toBe(text)
     }
 
     expect(reconcile).toHaveBeenCalledTimes(3)
@@ -107,7 +108,7 @@ describe('App', () => {
       fireEvent.change(editor, { target: { value: text } })
 
       expect(container.querySelector('pre')?.textContent).toBe(JSON.stringify(expected, null, 2))
-      expect(editor).toHaveValue(text)
+      expect(readEditor(editor)).toBe(text)
       if (expected.sentences.length > 0) {
         const table = screen.getByRole('table', { name: 'Current sentence records', hidden: true })
         const rows = within(table).getAllByRole('row', { hidden: true }).slice(1)
@@ -133,7 +134,7 @@ describe('App', () => {
 
     fireEvent.change(editor, { target: { value: 'Still editable.' } })
 
-    expect(editor).toHaveValue('Still editable.')
+    expect(readEditor(editor)).toBe('Still editable.')
     expect(screen.queryByText('Debug state')).not.toBeInTheDocument()
     expect(container.querySelector('.debug-inspector')).toBeNull()
     expect(container.querySelector('pre')).toBeNull()

@@ -1,24 +1,14 @@
 import DebugInspector from './DebugInspector'
-import { useRef } from 'react'
-import SuggestionReview from './SuggestionReview'
+import SentenceEditor from './SentenceEditor'
 import { useSentenceEditor } from './checking/useSentenceEditor'
 
 export default function App() {
   const { state, updateText, failures, retry, accept, reject } = useSentenceEditor()
-  const editor = useRef<HTMLTextAreaElement>(null)
 
   return (
     <main>
       <h1>Typewriter</h1>
-      <textarea
-        ref={editor}
-        id="document"
-        aria-label="Your writing"
-        value={state.document.text}
-        onChange={(event) => updateText(event.currentTarget.value)}
-        spellCheck={false}
-      />
-      <SuggestionReview state={state} accept={accept} reject={reject} focusEditor={() => editor.current?.focus()} />
+      <SentenceEditor state={state} updateText={updateText} accept={accept} reject={reject} />
       {import.meta.env.DEV && <DebugInspector state={state} failures={failures} retry={retry} />}
     </main>
   )

@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { fireEvent, highlights, readEditor } from '../test/editor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import type { SentenceDocumentState } from '../document/sentences'
@@ -45,12 +46,12 @@ describe('editor → queue → Ollama integration', () => {
     fireEvent.change(editor, { target: { value: 'They works. Next.' } })
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
     expect(fetch).toHaveBeenCalledTimes(3)
-    fireEvent.click(screen.getByRole('button', { name: 'They works.' }))
+    fireEvent.click(highlights()[0])
     fireEvent.click(screen.getByRole('button', { name: action }))
-    expect(screen.queryByRole('region', { name: 'Sentence comparison' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Sentence comparison' })).not.toBeInTheDocument()
     expect(editor).toHaveFocus()
     const accepted = action === 'Accept suggestion'
-    expect(editor).toHaveValue(accepted ? 'They work. Next.' : 'They works. Next.')
+    expect(readEditor(editor)).toBe(accepted ? 'They work. Next.' : 'They works. Next.')
     expect(readState(container).sentences[0].status).toBe(accepted ? 'idle' : 'rejected')
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
     expect(fetch).toHaveBeenCalledTimes(3)
@@ -77,7 +78,7 @@ describe('editor → queue → Ollama integration', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(readState(container).sentences[0].status).toBe('idle')
-    expect(screen.queryByRole('button', { name: 'They works.' })).not.toBeInTheDocument()
+    expect(highlights()).toHaveLength(0)
     fireEvent.change(editor, { target: { value: 'Next.' } })
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
     expect(fetch).toHaveBeenCalledTimes(3)
@@ -85,7 +86,7 @@ describe('editor → queue → Ollama integration', () => {
     await settle()
     expect(fetch).toHaveBeenCalledTimes(4)
     expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean'])
-    expect(editor).toHaveValue('Next.')
+    expect(readEditor(editor)).toBe('Next.')
   })
 
   it('publishes only the converged result and keeps the editor unchanged', async () => {
@@ -103,7 +104,7 @@ describe('editor → queue → Ollama integration', () => {
     finalPass.resolve(response('They can work.'))
     await settle()
     expect(readState(container).sentences[0]).toMatchObject({ status: 'suggestion', suggestion: 'They can work.' })
-    expect(editor).toHaveValue('They is able to work.')
+    expect(readEditor(editor)).toBe('They is able to work.')
   })
 
   it('continues the queue after a cycle and lets Retry start a fresh refinement', async () => {
@@ -137,7 +138,7 @@ describe('editor → queue → Ollama integration', () => {
     expect(container.querySelector('.debug-response')).toHaveTextContent('finish_reason: "length"')
     expect(container.querySelector('.debug-response')).toHaveTextContent('<b>Partial correction</b>')
     expect(container.querySelector('.debug-response b')).toBeNull()
-    expect(editor).toHaveValue('They works.')
+    expect(readEditor(editor)).toBe('They works.')
     expect(readState(container).sentences[0].status).toBe('idle')
     fireEvent.click(screen.getByRole('button', { name: 'Hide response' }))
     expect(container.querySelector('.debug-response')).toBeNull()
@@ -180,10 +181,10 @@ describe('editor → queue → Ollama integration', () => {
     expect(JSON.parse(fetch.mock.calls[0][1].body).messages[1].content).toBe('They works.')
     expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean', 'suggestion', 'idle'])
     expect(readState(container).sentences[1].suggestion).toBe('They work.')
-    expect(editor).toHaveValue(text)
-    fireEvent.click(screen.getByRole('button', { name: 'They works.' }))
-    expect(screen.getByRole('region', { name: 'Sentence comparison' })).toHaveTextContent('They work.')
-    expect(editor).toHaveValue(text)
+    expect(readEditor(editor)).toBe(text)
+    fireEvent.click(highlights()[0])
+    expect(screen.getByRole('dialog', { name: 'Sentence comparison' })).toHaveTextContent('They work.')
+    expect(readEditor(editor)).toBe(text)
 
     fireEvent.change(editor, { target: { value: `\n${text}` } })
     await act(async () => { await vi.advanceTimersByTimeAsync(400) })
@@ -210,7 +211,7 @@ describe('editor → queue → Ollama integration', () => {
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(JSON.parse(fetch.mock.calls[2][1].body).messages[1].content).toBe('They work!')
     expect(readState(container).sentences[0]).toMatchObject({ version: 3, status: 'clean' })
-    expect(editor).toHaveValue('They work!')
+    expect(readEditor(editor)).toBe('They work!')
   })
 
   it('ignores responses for deleted occurrences', async () => {
@@ -225,7 +226,7 @@ describe('editor → queue → Ollama integration', () => {
     first.resolve(response('They work.'))
     await settle()
     expect(readState(container).sentences).toEqual([])
-    expect(editor).toHaveValue('')
+    expect(readEditor(editor)).toBe('')
     expect(fetch).toHaveBeenCalledTimes(2)
   })
 
@@ -294,7 +295,7 @@ describe('editor → queue → Ollama integration', () => {
     await settle()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(readState(container).sentences.map((record) => record.status)).toEqual(['clean', 'suggestion'])
-    expect(editor).toHaveValue('  Same. Same.')
+    expect(readEditor(editor)).toBe('  Same. Same.')
   })
 
   it('removes edited failures and ignores late errors from old versions', async () => {
@@ -314,7 +315,7 @@ describe('editor → queue → Ollama integration', () => {
     late.resolve(new Response('failure', { status: 500 }))
     await settle()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(editor).toHaveValue('Changed again')
+    expect(readEditor(editor)).toBe('Changed again')
   })
 
   it('aborts fetch on unmount and suppresses disposed results', async () => {

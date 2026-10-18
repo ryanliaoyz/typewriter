@@ -23,8 +23,8 @@ replacement:
 not Unicode code points. Applying that replacement reconstructs the new text.
 Unchanged input returns `edit: null`. Transitions do not mutate previous state,
 trim whitespace, or normalize Unicode; ranges avoid splitting intact surrogate
-pairs. The controlled textarea uses these transitions for every change through
-the sentence-state module.
+pairs. Snapshot callers use these transitions through the sentence-state module.
+The CodeMirror adapter supplies exact edit ranges instead of inferring them.
 
 The range is inferred from the common prefix and suffix of two snapshots, not
 from a browser edit operation. Equivalent edits within repeated text can be
@@ -73,7 +73,9 @@ The module does not schedule checks, assign identities, or modify editor state.
 of React and the DOM. `createSentenceDocument(text)` initializes canonical
 document state and derived sentence records;
 `updateSentenceDocument(previous, text)` updates both in one pure transition.
-The textarea uses these functions for every change. State has `document`,
+The editor uses these functions for every change. `updateSentenceDocument` accepts
+an optional explicit `DocumentEdit` from the editor adapter; snapshot callers omit
+it and retain prefix/suffix inference. State has `document`,
 `sentences`, and a session-local `nextSentenceId` counter. Each record contains
 the segment's `start`, `end`, `text`, and `complete` fields plus:
 
@@ -99,9 +101,10 @@ Reconciliation never rewrites document text. It resegments the whole document fo
 simplicity, keeping UTF-16 content ranges and the existing completion policy.
 The counter is part of immutable state, not a random or global allocator.
 
-Identity follows the **inferred edit**, not a browser edit operation: adding or
-removing an identical duplicate can be indistinguishable from editing a different
-occurrence. Multiple non-whitespace edits in one snapshot form one replacement;
+Identity follows the supplied edit range. CodeMirror edits provide exact ranges,
+so inserting an identical duplicate does not transfer an existing occurrence's
+identity to the new text. For snapshot-only callers, adding or removing identical
+duplicates can remain ambiguous. Multiple non-whitespace edits in one snapshot form one replacement;
 unchanged sentences inside an ambiguous many-to-many neighborhood may also receive
 fresh IDs. The module deliberately avoids matching arbitrary occurrences solely
 by sentence strings. An ambiguous neighborhood does not transfer results to fresh
@@ -332,7 +335,7 @@ starts after unmount. Edits do not abort the active request or release its slot 
 
 [`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) owns
 the canonical sentence-document state, one sequential queue, and current failures
-by sentence occurrence. It consumes textarea edits, retry and suggestion actions,
+by sentence occurrence. It consumes editor text and optional exact edit ranges, retry and suggestion actions,
 and asynchronous client results, and produces state, `updateText`, `retry`,
 `accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
 9, and 10).
@@ -361,20 +364,18 @@ before publishing React state so closely spaced callbacks preserve every failure
 
 ## Editor and development inspector
 
-[`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
-actions from `useSentenceEditor`. It passes current sentence state to
-the suggestion review component below the textarea. Drafts live
-only in the current page session; no persistence is implemented. The textarea has
-an accessible name without a visible label or instructional copy. The review and
-inspector omit instructional prose while retaining controls, state data, and
-concise empty states (invariants 1 and 9).
+[`src/App.tsx`](../src/App.tsx) connects `useSentenceEditor` state and actions to
+the single CodeMirror writing surface described below. Drafts live only in the
+current page session; no persistence is implemented. The editor has an accessible
+name without a visible label or instructional copy. The inspector retains its
+controls and state data (invariants 1 and 9).
 After fixing server setup, retry failed sentences without reloading or
 changing the draft. Failure controls also implement invariant 10. For now, failure
 details and Retry buttons live exclusively inside the collapsed **Debug state**
 disclosure; production/preview do not expose them.
 
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
-live state used by the textarea. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
+live state used by the editor. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
 consumes session state, failures, and the retry action. It shows one alert per
 failed occurrence with its input text, error, and a native **Retry** button,
 followed by document length in UTF-16 units, sentence/completion counts, and each
@@ -385,7 +386,7 @@ Completion means eligible for scheduling, not a grammar-check
 result. This read-only view consumes session state without a separate cache or
 segmentation pipeline (invariants 1 and 2).
 
-The latest edit (inferred for typing, explicit for acceptance) references the
+The latest edit (explicit for editor typing and acceptance, inferred for snapshot callers) references the
 **previous** document's range; it is not an edit history. Expand **Raw state JSON**
 to see the entire state, including
 canonical whitespace and the session-local ID counter. The inspector adds no
@@ -404,28 +405,45 @@ For manual validation:
    and newlines to inspect UTF-16 ranges and escaped whitespace.
 7. Delete all text: sentence records disappear while the ID counter remains.
 
-## Suggestion review
+## Inline editor and suggestion review
 
-[`src/SuggestionReview.tsx`](../src/SuggestionReview.tsx) consumes the current
-sentence-document state and accept/reject/focus callbacks, and produces a read-only
-document view plus an optional original/suggested comparison panel. The textarea remains the editable source of
-truth. The view slices canonical text at current UTF-16 suggestion ranges, preserving
-all intervening text, whitespace, and unfinished prose. Whole-sentence highlights
-are native buttons with keyboard activation, visible focus, and expanded state.
-Text is rendered literally, including model output (invariants 1, 2, and 9).
+[`src/SentenceEditor.tsx`](../src/SentenceEditor.tsx) consumes canonical
+sentence-document state and edit/accept/reject callbacks. It produces one editable
+plain-text document with sentence marks and an anchored original/suggested review
+card. It integrates `@codemirror/state`, `@codemirror/view`, and
+`@codemirror/commands` directly, without a rich-text schema or React wrapper.
+CodeMirror supplies editing, wrapping, history, mark decorations, and tooltip
+positioning; the application keeps sentence identity and checking outside it
+(invariants 1–4 and 9).
 
-Selection stores only an occurrence ID and version. Each render resolves the
-comparison from current records: offset shifts retain selection; content edits,
-deletion, splits, merges, or loss of suggestion status clear it permanently.
-Duplicate sentences remain independent. Closing the panel returns focus to the
-highlight. An empty state does not imply that unchecked sentences are clean.
-[`src/styles.css`](../src/styles.css) supplies whitespace-preserving layout,
-wrapping, highlight colors, and focus styles. No document or cache changes are
-made by closing the panel. Accept/reject buttons send the currently displayed
-capture to the session; after a successful action the panel closes and focus
-returns to the editor because the highlight is removed. `src/App.tsx` wires these
-callbacks and owns the textarea focus reference. Native buttons and the existing
-focus styles apply in both development and production.
+The adapter publishes exact UTF-16 replacements to the session. Disjoint changes
+are applied in order with adjusted offsets. LF is the explicit line separator;
+constructing editor text from LF-split lines retains CR characters instead of
+normalizing canonical whitespace. Incoming cache-only results update decorations,
+not text, selection, or history. Acceptance synchronizes the session's explicit
+replacement into CodeMirror as an isolated undo event, without publishing it twice.
+Undo/redo are ordinary document edits and recheck through the existing queue;
+they do not restore obsolete model results. The view is destroyed on unmount,
+including React Strict Mode's effect replay.
+
+Selection stores an occurrence ID and version and resolves against current
+records. Offset shifts preserve selection; edits, deletion, splits, merges, or
+loss of suggestion status clear it permanently. Identical sentences remain
+independent. Stale marks disappear immediately on editing, before React publishes
+updated records. The card retains its DOM and focused controls across unrelated
+results and offset-only moves. All original/model text is literal text, not HTML.
+
+Click/tap a marked sentence to open the non-modal review card. Keyboard users can
+place the caret in a marked sentence and press **Alt+Enter**, which opens the card
+and focuses Accept. Its native buttons support Tab navigation; **Escape** or
+Close returns focus to the editor. Clicking unmarked editor text also dismisses
+the card. Accept/reject send the displayed versioned capture through the existing
+session guards. Reject and Close do not change document text. The same interaction
+works in development and production.
+
+[`src/styles.css`](../src/styles.css) consumes editor/card class names and supplies
+prose typography, sentence highlights, focus indicators, and a viewport-bounded,
+scrollable comparison card. It changes presentation only (invariants 1 and 9).
 
 ## Connected model integration and suggestion actions
 
@@ -456,7 +474,7 @@ model request. When the response arrives:
 
 1. Discard it if the sentence was deleted or its version/input changed.
 2. If the valid returned text matches the input, mark the record clean.
-3. Otherwise, store a suggestion and highlight its sentence in the review view.
+3. Otherwise, store a suggestion and highlight its sentence in the editor.
 
 Server failures or unusable responses remain unchecked and show per-sentence
 notices with retry controls. Clicking a highlighted sentence shows its original
@@ -512,7 +530,14 @@ captures, failure invalidation, and preservation of canonical text. None of thes
 tests needs a running model. Review tests cover independent duplicate selection,
 whitespace/Unicode preservation, offset shifts, selection invalidation after edits,
 deletion, splits/merges or result removal, closing and focus restoration, and
-integration with cached model responses without rewriting the editor. Refinement
+integration with cached model responses without rewriting the editor. The inline
+editor tests also cover exact edit captures, disjoint transaction edits, CR/LF and
+Unicode preservation, one writing surface, card focus during unrelated results,
+Alt+Enter/Escape, and acceptance undo/redo. `src/test/editor.ts` provides transaction
+helpers for component fixtures rather than pretending contenteditable is a textarea.
+A headless Chromium smoke check with mocked inference verified duplicate acceptance,
+undo/redo, keyboard focus, mobile wrapping/scroll positioning, and IME composition;
+Firefox, Safari, and native platform input methods remain unvalidated. Refinement
 tests cover multi-pass convergence, original/candidate cycles, exhaustion of the
 pass budget, convergence at the limit, failure propagation, cancellation, queue
 blocking until convergence, stale results, and retry after a cycle.

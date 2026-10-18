@@ -5,6 +5,7 @@ import { readModelConfig } from './config'
 import { createOllamaChecker, UnusableResponseError } from './ollama'
 import { createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
+import type { DocumentEdit } from '../document/document'
 
 type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
 
@@ -64,8 +65,8 @@ export function useSentenceEditor() {
     }
   }, [])
 
-  function updateText(text: string): void {
-    publish(updateSentenceDocument(current.current, text))
+  function updateText(text: string, edit?: DocumentEdit): void {
+    publish(updateSentenceDocument(current.current, text, edit))
   }
 
   function publish(next: SentenceDocumentState): void {

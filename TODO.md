@@ -16,6 +16,7 @@
 - [x] Enable meaning-preserving compression with bounded refinement to convergence.
 - [x] Implement version-safe accept and per-version reject actions.
 - [x] Remove instructional UI copy and unused hint markup/styles while preserving accessibility.
+- [x] Merge editing and suggestion review into one CodeMirror surface with inline highlights, an anchored review card, and undoable acceptance.
 - [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [ ] Evaluate corrections with `tests.txt` and document runnable setup commands.
 

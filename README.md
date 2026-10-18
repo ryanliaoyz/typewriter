@@ -6,18 +6,19 @@ meaning, with user-controlled acceptance or rejection.
 
 ## What works today
 
-- Write or paste plain text into a controlled editor. Canonical text and whitespace
+- Write or paste plain text into a CodeMirror editor. Canonical text and whitespace
   are preserved; drafts live in the current page session and are lost on reload.
 - Sentences are segmented with `Intl.Segmenter` and tracked by occurrence ID and
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.
 - Completed sentences go through a 400 ms debounced, sequential queue to Ollama
   using `prompt.txt`. Candidates are refined until unchanged, within five passes,
-   before appearing as suggestions. Select highlights to compare original and
-   suggested text, then accept or reject. Accept replaces only the current sentence;
-   reject suppresses that version until edited. Both work in development and production.
-   Failure details and Retry and Show response buttons currently live only in
-   development **Debug state**.
+  before appearing as highlights directly in the editor. Click a highlight or press
+  **Alt+Enter** with the caret in it to compare and accept/reject in a nearby card;
+  **Escape** closes it. Accept replaces only that sentence as an undoable edit;
+  reject suppresses that version until edited. Both work in development and production.
+  Failure details and Retry and Show response buttons currently live only in
+  development **Debug state**.
 
 ## Quickstart
 
@@ -67,8 +68,8 @@ quality and macOS/Windows integration remain unvalidated. `llama-server` is defe
 ## Current architecture
 
 ```text
-React textarea
-  └── canonical document text + inferred edit range
+React + CodeMirror plain-text editor / inline suggestion card
+  └── canonical document text + exact editor edit ranges
         └── Intl.Segmenter + occurrence reconciliation
               └── versioned sentence records / result cache
                     └── 400 ms debounce → FIFO queue → HTTP client → Ollama

@@ -20,30 +20,35 @@ h1 {
   line-height: 1.2;
 }
 
-textarea {
+.writing-editor .cm-editor {
   box-sizing: border-box;
   display: block;
   width: 100%;
   min-height: 20rem;
-  padding: 1rem;
   border: 1px solid #777;
   border-radius: 0.5rem;
   color: inherit;
   background: #fff;
   font: inherit;
-  resize: vertical;
 }
 
-textarea:focus-visible {
+.writing-editor .cm-content {
+  min-height: 18rem;
+  padding: 1rem;
+  font-family: inherit;
+  tab-size: 4;
+}
+
+.writing-editor .cm-scroller {
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.writing-editor .cm-editor.cm-focused {
   outline: 2px solid #2457a7;
   outline-offset: 2px;
 }
 
-.suggestion-review {
-  margin-top: 2rem;
-}
-
-.review-document,
 .suggestion-comparison {
   padding: 1rem;
   border: 1px solid #aaa;
@@ -52,7 +57,6 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.review-document,
 .suggestion-comparison p {
   white-space: pre-wrap;
   tab-size: 4;
@@ -73,17 +77,20 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.sentence-highlight[aria-expanded='true'] {
-  background: #ffda67;
-}
-
-.suggestion-review button:focus-visible {
+.suggestion-comparison button:focus-visible {
   outline: 2px solid #2457a7;
   outline-offset: 2px;
 }
 
 .suggestion-comparison {
-  margin-top: 1rem;
+  max-width: min(32rem, calc(100vw - 4rem));
+  max-height: 60vh;
+  overflow: auto;
+  box-shadow: 0 0.5rem 1.5rem #0002;
+}
+
+.suggestion-comparison button {
+  margin: 0.25rem 0.5rem 0.25rem 0;
 }
 
 .suggestion-comparison h4 {

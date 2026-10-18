@@ -102,12 +102,13 @@ function unchangedStart(record: SentenceRecord, edit: DocumentEdit): number | nu
   return null
 }
 
-/** Reconcile occurrences against the canonical document's latest inferred edit. */
+/** Reconcile occurrences using an exact edit when supplied, otherwise infer it. */
 export function updateSentenceDocument(
   previous: SentenceDocumentState,
   text: string,
+  edit?: DocumentEdit,
 ): SentenceDocumentState {
-  const document = updateDocument(previous.document, text)
+  const document = edit ? { text, edit } : updateDocument(previous.document, text)
   return reconcileDocument(previous, document)
 }
 

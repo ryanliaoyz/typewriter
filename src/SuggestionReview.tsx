@@ -39,29 +39,26 @@ export default function SuggestionReview({ state, accept, reject, focusEditor }:
     <section className="suggestion-review" aria-labelledby={headingId}>
       <h2 id={headingId}>Suggestion review</h2>
       {suggestions.length === 0 ? (
-        <p>No suggestions to review. Completed sentences need a successful model check before results appear.</p>
+        <p>No suggestions to review.</p>
       ) : (
-        <>
-          <p>Select a highlighted sentence to compare its original and suggested text.</p>
-          <div className="review-document" aria-label="Document with suggestions">
-            {suggestions.map((sentence, index) => (
-              <Fragment key={sentence.id}>
-                {state.document.text.slice(index === 0 ? 0 : suggestions[index - 1].end, sentence.start)}
-                <button
-                  type="button"
-                  className="sentence-highlight"
-                  aria-expanded={selected?.id === sentence.id}
-                  aria-controls={selected?.id === sentence.id ? panelId : undefined}
-                  onClick={(event) => {
-                    trigger.current = event.currentTarget
-                    setSelection({ id: sentence.id, version: sentence.version })
-                  }}
-                >{sentence.text}</button>
-              </Fragment>
-            ))}
-            {state.document.text.slice(suggestions[suggestions.length - 1].end)}
-          </div>
-        </>
+        <div className="review-document" aria-label="Document with suggestions">
+          {suggestions.map((sentence, index) => (
+            <Fragment key={sentence.id}>
+              {state.document.text.slice(index === 0 ? 0 : suggestions[index - 1].end, sentence.start)}
+              <button
+                type="button"
+                className="sentence-highlight"
+                aria-expanded={selected?.id === sentence.id}
+                aria-controls={selected?.id === sentence.id ? panelId : undefined}
+                onClick={(event) => {
+                  trigger.current = event.currentTarget
+                  setSelection({ id: sentence.id, version: sentence.version })
+                }}
+              >{sentence.text}</button>
+            </Fragment>
+          ))}
+          {state.document.text.slice(suggestions[suggestions.length - 1].end)}
+        </div>
       )}
       {selected && (
         <section id={panelId} className="suggestion-comparison" aria-labelledby={panelHeadingId}>

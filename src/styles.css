@@ -20,17 +20,6 @@ h1 {
   line-height: 1.2;
 }
 
-label {
-  display: block;
-  margin-top: 2rem;
-  font-weight: 600;
-}
-
-#document-help {
-  margin: 0.5rem 0 1rem;
-  color: #555;
-}
-
 textarea {
   box-sizing: border-box;
   display: block;

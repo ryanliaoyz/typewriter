@@ -25,8 +25,6 @@ export default function DebugInspector({ state, failures = [], retry }: Props) {
   return (
     <details className="debug-inspector">
       <summary>Debug state</summary>
-      <p>A local-first writing editor, in development. Completed sentences are checked with your configured Ollama server for grammar and meaning-preserving compression.</p>
-      <p>Compare suggestions below your draft, then accept or reject them. Your writing is never automatically replaced.</p>
       {failures.map(({ sentence, message, details }) => (
         <div role="alert" key={sentence.id}>
           <p>{sentence.text}</p>
@@ -35,22 +33,12 @@ export default function DebugInspector({ state, failures = [], retry }: Props) {
           {details && <ResponseDetails key={`${sentence.id}:${sentence.version}`} details={details} />}
         </div>
       ))}
-      <p>Live editor state. Development only; nothing is persisted.</p>
       <dl className="debug-counts">
         <div><dt>Document length (UTF-16 units)</dt><dd>{state.document.text.length}</dd></div>
         <div><dt>Sentences</dt><dd>{state.sentences.length}</dd></div>
         <div><dt>Complete</dt><dd>{completeCount}</dd></div>
         <div><dt>Incomplete</dt><dd>{state.sentences.length - completeCount}</dd></div>
       </dl>
-      <p>
-        Ranges use UTF-16 units and are end-exclusive: [start, end). Sentence ranges refer to
-        the current document. Text is JSON-escaped to expose whitespace.
-      </p>
-      <p>
-        Complete means eligible for scheduling, not checked or grammatically correct.
-        Idle means unchecked; clean means checked without a correction; suggestion means a
-        correction is cached; rejected means dismissed for this version. Failures remain idle; suggestions appear in raw state JSON.
-      </p>
       {state.sentences.length === 0 ? (
         <p>No sentence records.</p>
       ) : (
@@ -84,7 +72,6 @@ export default function DebugInspector({ state, failures = [], retry }: Props) {
       )}
       <section aria-labelledby="debug-edit-heading">
         <h2 id="debug-edit-heading">Latest edit</h2>
-        <p>One replacement in the previous document, inferred for typing and explicit for acceptance; not an edit history.</p>
         {edit === null ? (
           <p>No edit in the latest transition.</p>
         ) : (

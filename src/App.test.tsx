@@ -24,9 +24,9 @@ describe('App', () => {
 
     const editor = screen.getByRole('textbox', { name: 'Your writing' })
     expect(editor).toHaveValue('')
-    expect(editor).toHaveAccessibleDescription(
-      'Write or paste plain text. Your draft stays in this page until you reload.',
-    )
+    expect(editor).not.toHaveAttribute('aria-describedby')
+    expect(screen.queryByText('Your writing')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Write or paste plain text/)).not.toBeInTheDocument()
   })
 
   it('wires consecutive changes and deletion into the controlled editor', () => {
@@ -73,14 +73,17 @@ describe('App', () => {
     expect(reconcile.mock.calls[2][0]).toBe(inserted)
   })
 
-  it('explains model checking and suggestion review', () => {
+  it('omits instructional copy while retaining the development inspector', () => {
+    vi.stubEnv('DEV', true)
     render(<App />)
 
-    expect(screen.getByText(/Completed sentences are checked/)).toBeInTheDocument()
-    expect(screen.getByText(/Compare suggestions below your draft/)).toBeInTheDocument()
-    expect(screen.getByText(/Compare suggestions below your draft/)).not.toBeVisible()
     fireEvent.click(screen.getByText('Debug state'))
-    expect(screen.getByText(/Compare suggestions below your draft/)).toBeVisible()
+    for (const hint of [
+      /A local-first writing editor/, /Compare suggestions below your draft/,
+      /Live editor state/, /Ranges use UTF-16/, /Complete means eligible/,
+      /One replacement in the previous document/, /Completed sentences need/,
+    ]) expect(screen.queryByText(hint)).not.toBeInTheDocument()
+    expect(screen.getByText('Raw state JSON')).toBeVisible()
   })
 
   it('shows live canonical state in the development inspector through edits, splits, merges, and deletion', () => {

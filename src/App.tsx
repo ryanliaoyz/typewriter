@@ -10,12 +10,10 @@ export default function App() {
   return (
     <main>
       <h1>Typewriter</h1>
-      <label htmlFor="document">Your writing</label>
-      <p id="document-help">Write or paste plain text. Your draft stays in this page until you reload.</p>
       <textarea
         ref={editor}
         id="document"
-        aria-describedby="document-help"
+        aria-label="Your writing"
         value={state.document.text}
         onChange={(event) => updateText(event.currentTarget.value)}
         spellCheck={false}

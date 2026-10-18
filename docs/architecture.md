@@ -364,11 +364,11 @@ before publishing React state so closely spaced callbacks preserve every failure
 [`src/App.tsx`](../src/App.tsx) renders a controlled textarea using the state and
 actions from `useSentenceEditor`. It passes current sentence state to
 the suggestion review component below the textarea. Drafts live
-only in the current page session; no persistence is implemented. The development
-inspector holds introductory copy explaining that
-completed sentences are sent to the configured server, that suggestions can be
-accepted or rejected, and that writing is never replaced automatically (invariants
-1 and 9). After fixing server setup, retry failed sentences without reloading or
+only in the current page session; no persistence is implemented. The textarea has
+an accessible name without a visible label or instructional copy. The review and
+inspector omit instructional prose while retaining controls, state data, and
+concise empty states (invariants 1 and 9).
+After fixing server setup, retry failed sentences without reloading or
 changing the draft. Failure controls also implement invariant 10. For now, failure
 details and Retry buttons live exclusively inside the collapsed **Debug state**
 disclosure; production/preview do not expose them.

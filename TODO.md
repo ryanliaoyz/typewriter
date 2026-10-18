@@ -15,6 +15,7 @@
 - [x] Evaluate output-only/stability contracts, tighten conservative editing rules, and withhold unstable suggestions.
 - [x] Enable meaning-preserving compression with bounded refinement to convergence.
 - [x] Implement version-safe accept and per-version reject actions.
+- [x] Remove instructional UI copy and unused hint markup/styles while preserving accessibility.
 - [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [ ] Evaluate corrections with `tests.txt` and document runnable setup commands.
 

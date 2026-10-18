@@ -36,6 +36,7 @@ describe('SuggestionReview', () => {
     const text = '  They works.\n\n\tThey works.  😀 Unfinished'
     const state = suggested(text)
     const { container } = render(<SuggestionReview state={state} />)
+    expect(screen.queryByText(/Select a highlighted sentence/)).not.toBeInTheDocument()
     expect(container.querySelector('.review-document')?.textContent).toBe(text)
     expect(screen.getAllByRole('button', { name: 'They works.' })).toHaveLength(2)
     fireEvent.click(screen.getAllByRole('button', { name: 'They works.' })[1])
@@ -94,7 +95,7 @@ describe('SuggestionReview', () => {
     const { rerender } = render(<SuggestionReview state={state} />)
     fireEvent.click(screen.getByRole('button', { name: 'They works.' }))
     rerender(<SuggestionReview state={cacheSentenceResult(state, state.sentences[0], { status: 'clean' })} />)
-    expect(screen.getByText(/No suggestions to review/)).toBeInTheDocument()
+    expect(screen.getByText('No suggestions to review.')).toBeInTheDocument()
     rerender(<SuggestionReview state={state} />)
     expect(screen.queryByRole('region', { name: 'Sentence comparison' })).not.toBeInTheDocument()
   })

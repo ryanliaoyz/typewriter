@@ -18,7 +18,7 @@
 - [x] Remove instructional UI copy and unused hint markup/styles while preserving accessibility.
 - [x] Merge editing and suggestion review into one CodeMirror surface with inline highlights, an anchored review card, and undoable acceptance.
 - [x] Modernize the minimal writing interface with responsive spacing, softer colors, prose typography, and refined suggestion controls.
-- [ ] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
+- [x] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [ ] Evaluate corrections with `tests.txt` and document runnable setup commands.
 
 ## Later

@@ -555,6 +555,17 @@ replacement ranges, offset shifts, whitespace and Unicode preservation, split
 replacement text, per-version rejection, focus restoration, and actions during
 active inference without concurrent requests.
 
+Additional editor-to-queue regressions in
+[`src/checking/integration.test.tsx`](../src/checking/integration.test.tsx) use exact
+CodeMirror transactions and deferred mock responses. They cover deleting and
+reinserting an identical duplicate during inference, splitting/merging active
+occurrences before a late error, editing back to identical text before a result,
+and accepting then undoing/redoing a suggestion while another check is active.
+Assertions verify occurrence identity, current-version caching, canonical text,
+FIFO ordering, and that new work waits for the active request to settle. These
+tests require no model server; a local text-range geometry stub supplies jsdom's
+missing layout methods for undo/redo scrolling, not real-browser layout validation.
+
 Use [`tests.txt`](../tests.txt) for separate manual model evaluation. Multiple
 meaning-preserving edits may be valid; [`output.txt`](../output.txt) is historical
 model output and performance information, not an exact-output oracle or a

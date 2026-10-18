@@ -1,76 +1,82 @@
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
+import { createOllamaChecker, MAX_EDIT_PASSES, REQUEST_TIMEOUT_MS, UnusableResponseError } from '../src/checking/ollamaCore.ts'
+import { evaluationCases } from './evaluation-cases.mjs'
 
-const base = (process.env.OLLAMA_SERVER_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '')
-const model = process.env.OLLAMA_MODEL || 'gemma2:9b-instruct-q4_K_M'
-const maxPasses = 5
-const prompt = await readFile(new URL('../prompt.txt', import.meta.url), 'utf8')
-const samples = (await readFile(new URL('../tests.txt', import.meta.url), 'utf8')).trim().split(/\n\s*\n/)
-samples.push(
-  'Irregardless of the fact that we spent a substantial total amount of six whole hours discussing about the matter, little progress was actually made due to the reason that the internet connection was running slow.',
-  'Although the team had all the necessary prerequesits in order to begin the task at hand, none of the managers were able to clearly define what the exact main objective was, which caused alot of confussion.',
-  'Furthermore, each and every person who participated in the meeting has given their own different opinion on how to best solve the pending issue.',
-  'Furthermore, each person who participated in the meeting offered a different opinion on how best to solve the pending issue.',
-  'Furthermore, each person who participated in the meeting has given a different opinion on how best to solve the pending issue.',
-  'Every employee who attended the workshop has shared a separate proposal for resolving the outstanding problem.',
-  'The measurements were somewhat unusual, but they have remained approximately consistent.',
-  'Albeit the lead researcher along with his primary assistants was unaware of the new criterion, they managed to complete the assessment in a timely manner, which ultimately resulted in having a positive beneficial effect on the entire teams overall productivity.',
-  'The change may ultimately improve the entire team\'s overall productivity, but it has not yet done so.',
-  'Only some participants have said that the change might improve overall productivity.',
-  'The treatment did not reduce mortality, although it may have improved comfort.',
-  'The new process reduced average latency by approximately 10%, but it did not improve overall throughput.',
-  'In spite of the fact that the software update was intended to make improvements to the systems security, a large number of users who are currently utilizing the platform has reported that it is causing a negative impact on their daily workflow at this point in time.',
-)
-
-function wordCount(text) {
-  return typeof text === 'string' && text.trim() ? text.trim().split(/\s+/).length : null
-}
-
-async function check(text) {
-  const response = await fetch(`${base}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(120_000),
-    body: JSON.stringify({
-      model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
-      stream: false, temperature: 0, max_tokens: 2048, reasoning_effort: 'none',
-    }),
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.json()
-}
-
-// Print the refinement trace for manual output-contract and linguistic review.
-// Equality measures stability; word counts measure size. Neither proves fidelity.
-for (const [index, input] of samples.entries()) {
-  const passes = []
+export async function evaluateCase(check, sample) {
+  const started = performance.now()
   try {
-    let candidate = input
-    const seen = new Set([input])
-    let outcome = 'limit'
-    for (let pass = 0; pass < maxPasses; pass += 1) {
-      const body = await check(candidate)
-      passes.push(body)
-      const next = body.choices?.[0]?.message?.content?.trim()
-      if (body.choices?.[0]?.finish_reason !== 'stop' || !next) {
-        outcome = 'invalid'
-        break
-      }
-      if (next === candidate) {
-        outcome = 'stable'
-        break
-      }
-      if (seen.has(next)) {
-        outcome = 'cycle'
-        break
-      }
-      seen.add(next)
-      candidate = next
-    }
-    const result = outcome === 'stable' ? candidate : null
-    const words = { input: wordCount(input), result: wordCount(result) }
-    console.log(JSON.stringify({ index: index + 1, model, input, outcome, words, result, passes }))
+    const result = await check({ id: sample.id, version: 1, text: sample.input })
+    const text = result.status === 'clean' ? sample.input : result.suggestion
+    return { ...sample, outcome: 'stable', status: result.status, result: text, elapsedMs: performance.now() - started,
+      words: { input: wordCount(sample.input), result: wordCount(text) } }
   } catch (error) {
-    console.log(JSON.stringify({ index: index + 1, model, input, passes, error: error.message }))
-    process.exitCode = 1
+    return { ...sample, outcome: error instanceof UnusableResponseError ? error.outcome : 'error',
+      result: null, elapsedMs: performance.now() - started, error: error.message, details: error.details ?? null }
   }
+}
+
+function wordCount(text) { return text.trim().split(/\s+/).length }
+function hash(text) { return createHash('sha256').update(text).digest('hex') }
+
+async function main() {
+  const serverUrl = (process.env.OLLAMA_SERVER_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '')
+  const url = new URL(serverUrl)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('OLLAMA_SERVER_URL must be an HTTP(S) base URL without credentials, query, or fragment.')
+  }
+  const model = process.env.OLLAMA_MODEL || 'gemma2:9b-instruct-q4_K_M'
+  const repeats = Number(process.env.EVALUATION_REPEATS || 1)
+  if (!Number.isInteger(repeats) || repeats < 1 || repeats > 3) throw new Error('EVALUATION_REPEATS must be 1, 2, or 3.')
+  const prompt = await readFile(new URL('../prompt.txt', import.meta.url), 'utf8')
+  const tests = await readFile(new URL('../tests.txt', import.meta.url), 'utf8')
+  const cases = evaluationCases(tests)
+  async function metadata(path, body, timeoutMs = 10_000) {
+    const response = await fetch(`${serverUrl}${path}`, {
+      ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!response.ok) throw new Error(`Metadata ${path}: HTTP ${response.status}`)
+    return response.json()
+  }
+  const version = await metadata('/api/version')
+  const tags = await metadata('/api/tags')
+  const installed = tags.models?.find(item => item.name === model || item.model === model)
+  if (!installed) throw new Error(`Model ${model} is not installed. Pull it explicitly before evaluation.`)
+  const show = await metadata('/api/show', { model })
+  console.log(JSON.stringify({ type: 'run', schemaVersion: 1, startedAt: new Date().toISOString(),
+    model, digest: installed.digest, modelDetails: installed.details, modelParameters: show.parameters,
+    node: process.version, platform: process.platform, ollamaVersion: version.version,
+    promptSha256: hash(prompt), testsSha256: hash(tests), casesSha256: hash(JSON.stringify(cases)),
+    settings: { temperature: 0, maxTokens: 2048, reasoningEffort: 'none', maxPasses: MAX_EDIT_PASSES, timeoutMs: REQUEST_TIMEOUT_MS },
+    repeats, caseCount: cases.length }))
+
+  // Warm-up is reported separately and excluded from sentence latency summaries.
+  const warmupStart = performance.now()
+  await metadata('/api/generate', { model, prompt: '', stream: false, keep_alive: '30m' }, REQUEST_TIMEOUT_MS)
+  console.log(JSON.stringify({ type: 'warmup', elapsedMs: performance.now() - warmupStart, residency: await metadata('/api/ps') }))
+  let passes = []
+  const check = createOllamaChecker({ prompt, model, serverUrl, fetch: async (url, init) => {
+    const start = performance.now()
+    const response = await fetch(url, init)
+    const raw = await response.clone().text()
+    let body
+    try { body = JSON.parse(raw) } catch { body = raw }
+    passes.push({ input: JSON.parse(init.body).messages[1].content, elapsedMs: performance.now() - start,
+      httpStatus: response.status, body })
+    return response
+  } })
+  for (let repeat = 1; repeat <= repeats; repeat += 1) {
+    for (const sample of cases) {
+      passes = []
+      const result = await evaluateCase(check, sample)
+      console.log(JSON.stringify({ type: 'case', model, repeat, ...result, passes }))
+      if (result.outcome === 'error') process.exitCode = 1
+    }
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(error => { console.error(error.message); process.exitCode = 1 })
 }

@@ -42,15 +42,19 @@ The inspector is absent from production builds.
 | `npm run preview` | Serve the production build locally after building |
 | `npm test` | Run tests once |
 | `npm run test:watch` | Run tests in watch mode |
+| `npm run evaluate:model` | Evaluate 37 inputs against a running Ollama model; emit JSONL |
+| `npm run evaluate:summarize -- <run.jsonl>` | Summarize a complete evaluation run |
 
 ## Model server setup
 
 1. Install **[Ollama](https://ollama.com/download)** separately: use its Linux
    installer or the macOS/Windows application. Start the Linux service or open the
    application; the default server is `http://127.0.0.1:11434`. Keep it on loopback.
-2. Use Ollama's pull command with the tag
-   **[`gemma2:9b-instruct-q4_K_M`](https://ollama.com/library/gemma2:9b-instruct-q4_K_M)**
-   to obtain the target model (about 5.8 GB). Weights are not included here.
+2. Obtain the target model (about 5.8 GB; weights are not included here):
+
+   ```sh
+   ollama pull gemma2:9b-instruct-q4_K_M
+   ```
 3. Optionally copy [`.env.example`](.env.example) to `.env.local` and set
    `VITE_OLLAMA_MODEL` and `VITE_OLLAMA_SERVER_URL` (server base URL, **without `/v1`**).
    Restart Vite after changes; rebuild for production. These are public settings,
@@ -61,9 +65,11 @@ CORS setup. Production and preview connect directly: Ollama must allow the page'
 origin via `OLLAMA_ORIGINS` if it is not already allowed. HTTPS pages need an HTTPS
 server. See [configuration and platform notes](docs/architecture.md#model-configuration-and-development-proxy).
 
-Linux live API/proxy checking was validated with an already-installed `qwen3.5:9b`
-model, and loopback preview CORS was checked. The target Gemma model's correction
-quality and macOS/Windows integration remain unvalidated. `llama-server` is deferred.
+Linux live Gemma checking was validated through the development proxy and direct
+preview connection, including accept/undo/reject and loopback CORS. A
+[37-case comparison](docs/evaluation.md) of Gemma 2 9B, Qwen 3.5 9B, and Qwen 3 8B
+found meaning-changing suggestions in all three; convergence is not a quality
+guarantee. macOS/Windows integration remains unvalidated; `llama-server` is deferred.
 
 ## Current architecture
 
@@ -83,5 +89,6 @@ from cached results. Model responses must never silently replace editor text.
 
 ## Further reading
 
-See [architecture and module details](docs/architecture.md) for data flow, testing,
-configuration, and remaining work. [`TODO.md`](TODO.md) tracks implementation.
+See [architecture and module details](docs/architecture.md) for data flow and
+configuration, and [model evaluation](docs/evaluation.md) for model choices,
+reproduction commands, scoring, and limitations. [`TODO.md`](TODO.md) tracks work.

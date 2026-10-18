@@ -252,7 +252,7 @@ ollama pull gemma2:9b-instruct-q4_K_M
 ollama serve
 ```
 
-These are upstream setup instructions, not a claim that Gemma was evaluated here.
+These are upstream setup instructions; local validation is recorded separately below.
 Do not start a second server when the Ollama app/service is already running.
 Linux's installer normally creates a service; macOS and Windows run the desktop
 application. Ollama's [environment configuration guide](https://docs.ollama.com/faq#how-do-i-configure-ollama-server)
@@ -261,17 +261,29 @@ variables. Restart the service/application after CORS changes. Hardware support
 and performance vary; no installation or service configuration is managed by the
 frontend. The target tag is listed upstream as 9B Q4_K_M (approximately 5.8 GB).
 
-Validation so far: Linux live chat through Vite using an installed `qwen3.5:9b`
-model, plus a successful CORS preflight from `http://127.0.0.1:4173`. No Gemma
-download/evaluation, macOS, or Windows live validation has been performed.
+Initial validation used Linux live chat through Vite with an installed
+`qwen3.5:9b` model, plus a successful CORS preflight from
+`http://127.0.0.1:4173`. The subsequent [model evaluation](evaluation.md) records
+the target Gemma download, current model comparison, and browser validation.
+macOS and Windows live integration remain unvalidated.
 
 ## Ollama HTTP client
 
-[`src/checking/ollama.ts`](../src/checking/ollama.ts) consumes a model tag, request
-base URL, optional session cancellation signal, and a captured sentence. It
-produces a successful `clean`/`suggestion` result or rejects with an error. It has
-no React, queue, or document-state dependencies beyond shared types (invariants
-8 and 10).
+[`src/checking/ollama.ts`](../src/checking/ollama.ts) is the browser adapter: it
+imports the exact `prompt.txt` through Vite and supplies it to the shared checker.
+It consumes a model tag, request base URL, optional session cancellation signal,
+and a captured sentence, and produces a successful `clean`/`suggestion` result or
+rejects with an error (invariants 8 and 10).
+
+[`src/checking/ollamaCore.ts`](../src/checking/ollamaCore.ts) owns HTTP requests,
+response validation, and bounded refinement. It consumes those same settings plus
+prompt text and an optional injected fetch implementation, and produces classified
+results or errors with `invalid`, `cycle`, or `limit` diagnostics. It has no Vite,
+React, queue, or document-state dependencies beyond erased types. Both browser
+checking and the Node evaluation CLI use this implementation, preventing divergent
+response-contract or convergence rules (invariants 4, 8, and 10). Injection permits
+trace collection in evaluation and mocked requests in tests; it does not change
+generation settings.
 
 `createOllamaChecker` sends a non-streaming POST to `/v1/chat/completions`, with
 the exact contents of [`prompt.txt`](../prompt.txt) imported as a raw system
@@ -470,8 +482,10 @@ worker system. See the [model server setup](../README.md#model-server-setup) for
 platform validation limits. Highlighting and accept/reject controls in
 the diagram are implemented.
 
-Gemma 2 9B Q4_K_M remains the target model pending evaluation with Ollama; choosing
-the runtime does not establish model availability or correction quality.
+Gemma 2 9B Q4_K_M remains the configured target/default. The
+[local comparison](evaluation.md) evaluates its availability and correction
+quality alongside two Qwen configurations; runtime compatibility does not establish
+semantic fidelity, and comparison findings do not automatically change defaults.
 `llama-server` is a planned alternative for a later version, not a supported v1
 runtime. Its shared chat API may allow client reuse, but compatibility and setup
 must be implemented and tested before support is claimed.
@@ -575,30 +589,36 @@ and guidance for coding agents.
 
 ### Output-contract and stability evaluation
 
-[`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) reads `prompt.txt`
-and `tests.txt`, adds the long sentences reported during manual testing, the
-meeting sentence and two corrected variants, and semantic-preservation cases
-(37 inputs total). The latter cover tense, qualifiers, negation, attribution,
-scope, uncertainty, and numerical precision. It sends each input and then its
-candidate outputs to Ollama sequentially until unchanged, a cycle, or five passes.
-It prints JSON lines containing all raw response envelopes (`passes`), an `outcome`
-of `stable`, `cycle`, `limit`, or `invalid`, and whitespace-delimited word counts
-for the input and stable result (`null` without a stable result). Transport errors
-include the partial trace. These
-support manual review; the script does not change editor state or use `output.txt`
-as an oracle.
-Run `OLLAMA_MODEL=qwen3.5:9b npm run evaluate:model` on Linux/macOS; in PowerShell,
-set `$env:OLLAMA_MODEL = 'qwen3.5:9b'` then run `npm run evaluate:model`.
-`OLLAMA_SERVER_URL` optionally overrides `http://127.0.0.1:11434`; the default
-model is the target Gemma tag. These script settings are separate from Vite's env
-files. Stability and word count do not validate meaning, formatting, or grammar.
-Review each original/candidate pair for useful compression, complete corrections,
-and preservation of the facts and qualifiers above. Stable but unchanged bloated
-prose is a missed opportunity; a shorter result that loses meaning is a bad edit.
-Refinement can converge after several useful compressions. It is a consistency
-guard, not a semantic judge; it can exhaust the budget on usable text or accept a
-stable semantic error. The script checks completed, nonempty responses and leaves
-full output-contract and meaning assessment to manual review.
+[`scripts/evaluation-cases.mjs`](../scripts/evaluation-cases.mjs) consumes the
+unchanged `tests.txt` contents and produces 37 occurrence-based, named cases: the
+24 fixture samples and 13 existing grammar/compression/fidelity regressions. It
+does not provide an exact-output oracle or modify editor state (invariants 1, 8).
+
+[`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) consumes that case
+list, `prompt.txt`, and `OLLAMA_MODEL`/`OLLAMA_SERVER_URL`/`EVALUATION_REPEATS`
+environment settings. It uses the shared checker directly and produces a JSONL
+run manifest, loading/residency record, and per-case results with raw pass traces
+and timings. Inputs/repeats are sequential; unsuccessful attempts publish no
+candidate, just as in the app. These script settings are separate from Vite's
+environment files. There is no editor state or exact-output comparison to
+`output.txt` (invariants 1, 6, 8, 10).
+
+[`scripts/summarize-evaluation.mjs`](../scripts/summarize-evaluation.mjs) consumes
+complete JSONL runs and produces outcome counts, median/p95/max sentence latency,
+request/pass counts, category counts, and differences between repetitions. It
+rejects incomplete/duplicate records. It never grades meaning or treats failed
+checks as clean (invariant 10).
+
+[`scripts/evaluate-model.test.ts`](../scripts/evaluate-model.test.ts) consumes
+mock responses and a local fake HTTP server, and verifies fixtures, shared
+validation/refinement, sequential full CLI runs, metadata, configuration errors,
+and summary completeness without a running model. The Node CLI loads erasable
+TypeScript using `--experimental-strip-types`; the browser still builds with Vite.
+
+See [model evaluation](evaluation.md) for exact model choices, runnable commands,
+output schema, review rubric, current results, and validation limits. Stability
+and word count do not establish fidelity or grammar quality. The earlier runs
+below are historical prompt-development results, not the current comparison.
 
 The runs below record prompt development. The latest contract encourages
 meaning-preserving compression; the earlier minimal-edit restrictions are historical.
@@ -617,8 +637,8 @@ the model always follows the output-only contract.
 That run also exposed quality issues even for stable responses: the long
 “Irregardless…” input only lost “about” after “discussing,” retaining its other
 clutter; the otherwise valid “somewhat unconventional” sample lost “somewhat” and
-“nevertheless,” reducing nuance. The target Gemma model has not been evaluated
-here. An unchanged second pass is a consistency check, not a guarantee that an
+“nevertheless,” reducing nuance. At that stage, the target Gemma model had not
+been evaluated. An unchanged second pass is a consistency check, not a guarantee that an
 edit is correct or conservative.
 
 After tightening the anti-rewriting rules on 2026-10-17, the expanded evaluation

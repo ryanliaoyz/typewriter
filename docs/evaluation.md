@@ -27,9 +27,11 @@ default model is not automatically changed by the comparison.
 The recorded results on this page use the **legacy 37-case suite**, still the
 default. The newer [60-case editing-v1 benchmark](../benchmarks/editing-v1/rubric.md)
 adds predeclared correction requirements, protected meaning, valid-prose controls,
-and semantic contrast pairs. Select it with `EVALUATION_SUITE=editing-v1`; it has
-not been evaluated against models as part of its addition. It is synthetic
-development material, not a held-out corpus. Do not mix its scores with these runs.
+and semantic contrast pairs. Select it with `EVALUATION_SUITE=editing-v1`.
+The dataset addition itself included no live runs; the subsequent
+[new-model comparison](editing-v1-evaluation.md) uses that suite and a newer Ollama
+runtime. It is synthetic development material, not a held-out corpus. Do not mix
+its scores with the legacy runs on this page.
 
 [`tests.txt`](../tests.txt) is unchanged: samples 1–8 primarily test grammar,
 9–16 compression, and 17–24 valid prose. These categories are review aids, not

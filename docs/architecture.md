@@ -643,7 +643,9 @@ and malformed-suite rejection. CLI tests cover both suites against a fake server
 and verify that rubric/reference metadata never leaks into inference requests.
 
 See [model evaluation](evaluation.md) for exact model choices, runnable commands,
-output schema, review rubric, current results, and validation limits. Stability
+output schema, review rubric, legacy results, and validation limits. The
+[editing-v1 comparison](editing-v1-evaluation.md) evaluates newly installed models
+against a same-suite baseline without changing the checker or prompt. Stability
 and word count do not establish fidelity or grammar quality. The earlier runs
 below are historical prompt-development results, not the current comparison.
 

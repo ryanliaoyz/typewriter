@@ -21,6 +21,7 @@
 - [x] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [x] Evaluate corrections with `tests.txt` and document runnable setup commands.
 - [x] Add a 60-case annotated editing benchmark with semantic contrast pairs and suite selection.
+- [x] Evaluate newly installed models on editing-v1 against a same-suite baseline and document results.
 
 ## Later
 

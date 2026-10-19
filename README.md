@@ -90,6 +90,7 @@ from cached results. Model responses must never silently replace editor text.
 ## Further reading
 
 See [architecture and module details](docs/architecture.md) for data flow and
-configuration, [model evaluation](docs/evaluation.md) for the earlier comparison,
-and the [60-case benchmark rubric](benchmarks/editing-v1/rubric.md) for annotated
-cases, commands, and scoring. [`TODO.md`](TODO.md) tracks work.
+configuration, the [earlier comparison](docs/evaluation.md), and the
+[new-model benchmark results](docs/editing-v1-evaluation.md). The
+[60-case rubric](benchmarks/editing-v1/rubric.md) defines cases and scoring.
+[`TODO.md`](TODO.md) tracks work.

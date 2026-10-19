@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { readDraft, startDraftAutosave } from '../document/draft'
 import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
@@ -16,11 +17,13 @@ function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolea
 
 /** Own one document session and queue; publish transitions before more work runs. */
 export function useSentenceEditor() {
-  const [state, setState] = useState(() => createSentenceDocument())
+  const [state, setState] = useState(() => createSentenceDocument(readDraft()))
   const [failures, setFailures] = useState<readonly Failure[]>([])
   const currentFailures = useRef<readonly Failure[]>([])
   const current = useRef(state)
   const queue = useRef<ReturnType<typeof createSentenceQueue> | null>(null)
+
+  useEffect(() => startDraftAutosave(() => current.current.document.text), [])
 
   function publishFailures(next: readonly Failure[]): void {
     currentFailures.current = next

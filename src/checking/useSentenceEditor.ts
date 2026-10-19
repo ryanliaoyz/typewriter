@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { readDraft, readDraftSavedAt, startDraftAutosave } from '../document/draft'
-import type { DraftSession, DraftSummary } from '../document/draft'
+import type { DraftSession, DraftSummary, SaveStatus } from '../document/draft'
 import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, rejectedOccurrences, restoreSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
@@ -9,7 +9,7 @@ import { createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
 import type { DocumentEdit } from '../document/document'
 
-type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
+export type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
 
 function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolean {
   return state.sentences.some((record) => record.id === checked.id &&
@@ -33,12 +33,12 @@ export function useSentenceEditor() {
   const draft = useRef<DraftSession | null>(null)
   const [draftId, setDraftId] = useState('')
   // Read after the draft so a new tab's ID already exists.
-  const [lastSavedAt, setLastSavedAt] = useState(readDraftSavedAt)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(() => ({ savedAt: readDraftSavedAt(), failed: false }))
 
   useEffect(() => {
     const session = startDraftAutosave(() => ({
       text: current.current.document.text, rejected: rejectedOccurrences(current.current),
-    }), setLastSavedAt)
+    }), setSaveStatus)
     draft.current = session
     return () => {
       session.stop()
@@ -47,6 +47,9 @@ export function useSentenceEditor() {
   }, [])
 
   function publishFailures(next: readonly Failure[]): void {
+    const previous = currentFailures.current
+    // Most edits leave the list unchanged; keep its identity so nothing re-renders.
+    if (next.length === previous.length && next.every((failure, index) => failure === previous[index])) return
     currentFailures.current = next
     setFailures(next)
   }
@@ -97,11 +100,11 @@ export function useSentenceEditor() {
     queue.current?.update(next)
   }
 
-  function retry(sentence: SentenceCheck): void {
-    if (!isCurrent(current.current, sentence)) return
-    if (queue.current?.retry(sentence)) {
-      publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
-    }
+  /** False when the failure is stale or the queue cannot retry it, so its card stays open. */
+  function retry(sentence: SentenceCheck): boolean {
+    if (!isCurrent(current.current, sentence) || !queue.current?.retry(sentence)) return false
+    publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
+    return true
   }
 
   function accept(capture: SuggestionCapture): boolean {
@@ -124,14 +127,19 @@ export function useSentenceEditor() {
 
   /** Restore another draft's rejections with fresh IDs to exclude previous work. */
   async function openDraft(id: string): Promise<boolean> {
-    const opened = await draft.current?.open(id)
-    if (!opened) return false
-    publish(restoreSentenceDocument(opened.text, opened.rejected, current.current.nextSentenceId))
-    setLastSavedAt(opened.savedAt)
-    publishFailures([])
-    setDraftId(id)
-    return true
+    return await draft.current?.open(id, (opened) => {
+      publish(restoreSentenceDocument(opened.text, opened.rejected, current.current.nextSentenceId))
+      publishFailures([])
+      setDraftId(id)
+    }) ?? false
   }
 
-  return { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft, model: config.model }
+  async function removeDraft(id: string): Promise<boolean> {
+    return await draft.current?.remove(id) ?? false
+  }
+
+  return {
+    state, updateText, failures, retry, accept, reject, draftId, saveStatus,
+    listDrafts, openDraft, removeDraft, model: config.model,
+  }
 }

@@ -10,7 +10,8 @@ meaning, with user-controlled acceptance or rejection.
   are preserved. Changed drafts autosave locally every three minutes, even while
   typing, and on page hide/reload. Each tab keeps a separate draft; reloading a tab
   restores its draft, including deletions. Navigation beside the title shows the last
-  save time and configured model; **Open** switches to another saved draft that no open tab is using.
+  save time (or **Not saved** when storage fails) and configured model; **Open**
+  switches to or deletes another saved draft that no open tab is using.
 - Sentences are segmented with `Intl.Segmenter` and tracked by occurrence ID and
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.

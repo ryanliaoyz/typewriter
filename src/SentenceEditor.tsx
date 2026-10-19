@@ -5,14 +5,17 @@ import type { Tooltip } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands'
 import type { DocumentEdit } from './document/document'
 import type { SentenceDocumentState, SentenceRecord, SuggestionCapture } from './document/sentences'
-import type { useSentenceEditor } from './checking/useSentenceEditor'
+import type { Failure } from './checking/useSentenceEditor'
+import type { SentenceCheck } from './checking/queue'
 
 type Props = {
   state: SentenceDocumentState
   updateText: (text: string, edit?: DocumentEdit) => void
   accept: (capture: SuggestionCapture) => boolean
   reject: (capture: SuggestionCapture) => boolean
-} & Pick<ReturnType<typeof useSentenceEditor>, 'failures' | 'retry'>
+  failures: readonly Failure[]
+  retry: (sentence: SentenceCheck) => boolean
+}
 type Review =
   | { kind: 'suggestion', record: SentenceRecord & { status: 'suggestion' } }
   | { kind: 'failure', record: SentenceRecord, failure: Props['failures'][number] }
@@ -90,7 +93,8 @@ export default function SentenceEditor(props: Props) {
           ['Sentence', record.text, 'comparison-original'],
           ['Check failed', `${review.failure.message} This sentence remains unchecked.`, 'comparison-failure'],
         ]
-        controls = [['Retry', 'button-primary', () => { latest.current.retry(review.failure.sentence); return true }]]
+        // A refused retry (stale or already running) keeps the card open.
+        controls = [['Retry', 'button-primary', () => latest.current.retry(review.failure.sentence)]]
       } else {
         const capture: SuggestionCapture = {
           id: record.id, version: record.version, text: record.text, suggestion: review.record.suggestion,

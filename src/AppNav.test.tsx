@@ -1,11 +1,12 @@
 import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { formatSaveTime } from './AppNav'
+import AppNav, { formatSaveTime } from './AppNav'
+import type { DraftSummary } from './document/draft'
 import { DEFAULT_MODEL } from './checking/config'
 import { draftStorageKey } from './document/draft'
 import { fireEvent, readEditor } from './test/editor'
-import { savedDraftText } from './test/draft'
+import { failNextSnapshotWrite, savedDraftText } from './test/draft'
 
 beforeEach(() => vi.useFakeTimers())
 
@@ -19,6 +20,11 @@ afterEach(() => {
 
 async function clickOpen(): Promise<void> {
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open' })) })
+}
+
+/** The listed draft names, without their delete buttons. */
+function draftNames(drafts: HTMLElement): (string | null)[] {
+  return within(drafts).getAllByRole('listitem').map((item) => within(item).getAllByRole('button')[0].textContent)
 }
 
 function editorText(): string {
@@ -67,7 +73,7 @@ describe('App navigation', () => {
 
     await clickOpen()
     const drafts = screen.getByRole('group', { name: 'Saved drafts' })
-    expect(within(drafts).getAllByRole('button').map((button) => button.textContent)).toEqual(['Closed tab draft.'])
+    expect(draftNames(drafts)).toEqual(['Closed tab draft.'])
 
     await act(async () => { fireEvent.click(within(drafts).getByRole('button', { name: 'Closed tab draft.' })) })
     expect(screen.queryByRole('group', { name: 'Saved drafts' })).not.toBeInTheDocument()
@@ -107,7 +113,7 @@ describe('App navigation', () => {
     render(<App />)
     await clickOpen()
     const drafts = screen.getByRole('group', { name: 'Saved drafts' })
-    expect(within(drafts).getAllByRole('button').map((button) => button.textContent)).toEqual(['Free draft.'])
+    expect(draftNames(drafts)).toEqual(['Free draft.'])
   })
 
   it('shows when this tab\'s draft was last saved, including after opening another draft', async () => {
@@ -137,5 +143,53 @@ describe('App navigation', () => {
     expect(formatSaveTime(earlier, now)).toBe(new Date(earlier).toLocaleString(undefined,
       { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))
     expect(formatSaveTime(earlier, now)).not.toBe(formatSaveTime(today, now))
+  })
+
+  it('marks a failed save as not saved until a later save succeeds', () => {
+    render(<App />)
+    const nav = screen.getByRole('navigation', { name: 'Document' })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Unsaved.' } })
+    failNextSnapshotWrite()
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(within(nav).getByText('Not saved')).toHaveAttribute('title', expect.stringContaining('storage is full'))
+
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(within(nav).queryByText('Not saved')).not.toBeInTheDocument()
+    expect(within(nav).getByText(formatSaveTime(Date.now())).tagName).toBe('TIME')
+  })
+
+  it('deletes a saved draft after confirmation', async () => {
+    localStorage.setItem('typewriter:draft:old', 'Old draft.')
+    localStorage.setItem('typewriter:draft:keep', 'Keep draft.')
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    render(<App />)
+    await clickOpen()
+    const drafts = screen.getByRole('group', { name: 'Saved drafts' })
+
+    await act(async () => { fireEvent.click(within(drafts).getByRole('button', { name: 'Delete draft: Old draft.' })) })
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('“Old draft.”'))
+    expect(draftNames(drafts)).toEqual(['Keep draft.', 'Old draft.'])
+
+    await act(async () => { fireEvent.click(within(drafts).getByRole('button', { name: 'Delete draft: Old draft.' })) })
+    expect(draftNames(screen.getByRole('group', { name: 'Saved drafts' }))).toEqual(['Keep draft.'])
+    expect(localStorage.getItem('typewriter:draft:old')).toBeNull()
+  })
+
+  it.each(['toggle', 'Escape', 'outside click'])('stays closed when dismissed by %s before the drafts load', async (how) => {
+    let resolve!: (drafts: DraftSummary[]) => void
+    const listDrafts = vi.fn(() => new Promise<DraftSummary[]>((done) => { resolve = done }))
+    render(<AppNav saveStatus={{ savedAt: null, failed: false }} model="model" listDrafts={listDrafts}
+      openDraft={async () => false} removeDraft={async () => false} />)
+    const toggle = screen.getByRole('button', { name: 'Open' })
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Loading drafts…')).toBeInTheDocument()
+
+    if (how === 'toggle') fireEvent.click(toggle)
+    else if (how === 'Escape') fireEvent.keyDown(toggle, { key: 'Escape' })
+    else fireEvent.pointerDown(document.body)
+    await act(async () => { resolve([{ id: 'late', preview: 'Late draft.' }]) })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Late draft.')).not.toBeInTheDocument()
   })
 })

@@ -13,7 +13,7 @@ function suggested(text = 'They works. They works.') {
   }
   return state
 }
-const actions = { updateText: () => {}, accept: () => false, reject: () => false, failures: [], retry: () => {} }
+const actions = { updateText: () => {}, accept: () => false, reject: () => false, failures: [], retry: () => true }
 
 describe('SentenceEditor', () => {
   it('shows only current unchecked failures alongside suggestions and renders error text literally', () => {
@@ -45,7 +45,7 @@ describe('SentenceEditor', () => {
     const failures = state.sentences.map(({ id, version, text }, index) => ({
       sentence: { id, version, text }, message: `Failure ${index + 1}`,
     }))
-    const retry = vi.fn()
+    const retry = vi.fn(() => true)
     render(<SentenceEditor state={state} {...actions} failures={failures} retry={retry} />)
     const editor = screen.getByRole('textbox')
     act(() => editorView(editor).dispatch({ selection: { anchor: state.sentences[1].start + 1 } }))
@@ -64,6 +64,17 @@ describe('SentenceEditor', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(editor).toHaveFocus()
     expect(readEditor(editor)).toBe(state.document.text)
+  })
+
+  it('keeps the failure card open when a retry is refused', () => {
+    const state = createSentenceDocument('Failed.')
+    const failures = [{ sentence: state.sentences[0], message: 'Offline.' }]
+    const retry = vi.fn(() => false)
+    render(<SentenceEditor state={state} {...actions} failures={failures} retry={retry} />)
+    fireEvent.click(failureHighlights()[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledOnce()
+    expect(screen.getByRole('dialog', { name: 'Sentence check failed' })).toBeInTheDocument()
   })
 
   it('keeps Retry focused through unrelated failures and offset shifts', () => {

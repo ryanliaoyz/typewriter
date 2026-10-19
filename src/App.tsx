@@ -1,16 +1,19 @@
+import AppNav from './AppNav'
 import DebugInspector from './DebugInspector'
 import SentenceEditor from './SentenceEditor'
 import { useSentenceEditor } from './checking/useSentenceEditor'
 
 export default function App() {
-  const { state, updateText, failures, retry, accept, reject } = useSentenceEditor()
+  const { state, updateText, failures, retry, accept, reject, draftId, listDrafts, openDraft } = useSentenceEditor()
 
   return (
     <main>
       <header className="app-header">
         <h1>Typewriter<span className="brand-dot" aria-hidden="true">.</span></h1>
       </header>
-      <SentenceEditor state={state} updateText={updateText} failures={failures} retry={retry} accept={accept} reject={reject} />
+      <AppNav listDrafts={listDrafts} openDraft={openDraft} />
+      {/* A newly opened draft gets a fresh editor, so undo cannot cross drafts. */}
+      <SentenceEditor key={draftId} state={state} updateText={updateText} failures={failures} retry={retry} accept={accept} reject={reject} />
       {import.meta.env.DEV && <DebugInspector state={state} failures={failures} retry={retry} />}
     </main>
   )

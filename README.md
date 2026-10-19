@@ -9,7 +9,8 @@ meaning, with user-controlled acceptance or rejection.
 - Write or paste plain text into a CodeMirror editor. Canonical text and whitespace
   are preserved. Changed drafts autosave locally every three minutes, even while
   typing, and on page hide/reload. Each tab keeps a separate draft; reloading a tab
-  restores its draft, including deletions.
+  restores its draft, including deletions, and **Open** in the bar under the header
+  switches to another saved draft that no open tab is using.
 - Sentences are segmented with `Intl.Segmenter` and tracked by occurrence ID and
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.
@@ -79,7 +80,7 @@ guarantee. macOS/Windows integration remains unvalidated; `llama-server` is defe
 ```text
 React + CodeMirror plain-text editor / inline suggestion card
   └── canonical document text + exact editor edit ranges
-        ├── localStorage draft ↔ restore / three-minute autosave / page-hide flush
+        ├── per-tab localStorage draft ↔ restore / autosave / page-hide flush / Open list
         └── Intl.Segmenter + occurrence reconciliation
               └── versioned sentence records / result cache
                     └── 400 ms debounce → FIFO queue → HTTP client → Ollama

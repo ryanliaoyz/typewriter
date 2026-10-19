@@ -1,10 +1,22 @@
 const LEGACY_DRAFT_KEY = 'typewriter:draft'
 const DRAFT_KEY_PREFIX = 'typewriter:draft:'
 const TAB_ID_KEY = 'typewriter:tab'
+const LOCK_PREFIX = 'typewriter:tab:'
 const AUTOSAVE_INTERVAL_MS = 3 * 60 * 1000
+const PREVIEW_LENGTH = 60
+
+export type DraftSummary = { readonly id: string, readonly preview: string }
+
+/** One tab's autosave lifecycle; `open` switches the tab to another saved draft. */
+export type DraftSession = {
+  stop(): void
+  list(): Promise<DraftSummary[]>
+  open(id: string): Promise<string | null>
+}
 
 // Used only when sessionStorage cannot hold the tab ID; drafts then last one page load.
 let memoryTabId: string | null = null
+const locks = new Map<string, { granted: Promise<boolean>, release: () => void }>()
 const claims = new Map<string, Promise<string>>()
 
 function readTabId(): string | null {
@@ -15,15 +27,19 @@ function readTabId(): string | null {
   }
 }
 
-function assignTabId(): string {
-  // getRandomValues, unlike randomUUID, also works outside secure contexts.
-  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)),
-    (byte) => byte.toString(16).padStart(2, '0')).join('')
+function writeTabId(id: string): void {
   try {
     window.sessionStorage.setItem(TAB_ID_KEY, id)
   } catch {
     memoryTabId = id
   }
+}
+
+function assignTabId(): string {
+  // getRandomValues, unlike randomUUID, also works outside secure contexts.
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    (byte) => byte.toString(16).padStart(2, '0')).join('')
+  writeTabId(id)
   return id
 }
 
@@ -36,29 +52,62 @@ export function draftStorageKey(): string {
   return draftKey(readTabId() ?? assignTabId())
 }
 
+/** Hold a draft ID's Web Lock for the page lifetime; without Web Locks, assume it. */
+function tryLock(tabId: string): Promise<boolean> {
+  const existing = locks.get(tabId)
+  if (existing) return existing.granted
+  const entry = { granted: Promise.resolve(true), release: () => {} }
+  if (navigator.locks) {
+    entry.granted = new Promise<boolean>((resolve) => {
+      navigator.locks.request(`${LOCK_PREFIX}${tabId}`, { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          locks.delete(tabId)
+          resolve(false)
+          return
+        }
+        resolve(true)
+        return new Promise<void>((done) => { entry.release = done })
+      }).catch(() => resolve(true))
+    })
+  }
+  locks.set(tabId, entry)
+  return entry.granted
+}
+
+function releaseLock(tabId: string): void {
+  locks.get(tabId)?.release()
+  locks.delete(tabId)
+  claims.delete(tabId)
+}
+
 /**
- * Hold the tab ID for the page lifetime. A duplicated tab inherits a copy of
- * sessionStorage, finds the ID held, and forks to a new one with its copied text.
+ * A duplicated tab inherits a copy of sessionStorage, finds its ID held, and
+ * forks to a new one with its copied text.
  */
 function claimTabId(tabId: string): Promise<string> {
   let claim = claims.get(tabId)
-  if (claim) return claim
-  claim = new Promise<string>((resolve) => {
-    if (!navigator.locks) {
-      resolve(tabId)
-      return
-    }
-    navigator.locks.request(`typewriter:tab:${tabId}`, { ifAvailable: true }, (lock) => {
-      if (!lock) {
-        resolve(claimTabId(assignTabId()))
-        return
-      }
-      resolve(tabId)
-      return new Promise<never>(() => {})
-    }).catch(() => resolve(tabId))
-  })
-  claims.set(tabId, claim)
+  if (!claim) {
+    claim = tryLock(tabId).then((granted) => granted ? tabId : claimTabId(assignTabId()))
+    claims.set(tabId, claim)
+  }
   return claim
+}
+
+async function heldTabIds(): Promise<Set<string>> {
+  const held = new Set<string>()
+  try {
+    for (const { name } of (await navigator.locks?.query())?.held ?? []) {
+      if (name?.startsWith(LOCK_PREFIX)) held.add(name.slice(LOCK_PREFIX.length))
+    }
+  } catch {
+    // Without lock state, every other saved draft is listed.
+  }
+  return held
+}
+
+function previewOf(text: string): string {
+  const line = text.split('\n').find((candidate) => candidate.trim())?.trim().replace(/\s+/g, ' ') ?? ''
+  return line.length > PREVIEW_LENGTH ? `${line.slice(0, PREVIEW_LENGTH - 1)}…` : line
 }
 
 /** Restore this tab's canonical text; sentence records are rebuilt for this session. */
@@ -82,23 +131,27 @@ export function readDraft(): string {
 }
 
 /** Read the latest canonical text at each save, independently of typing cadence. */
-export function startDraftAutosave(readText: () => string): () => void {
-  let key = draftStorageKey()
-  let savedKey = key
+export function startDraftAutosave(readText: () => string): DraftSession {
+  let tabId = draftStorageKey().slice(DRAFT_KEY_PREFIX.length)
+  let savedId = tabId
   let savedText = readText()
-  void claimTabId(key.slice(DRAFT_KEY_PREFIX.length)).then((tabId) => { key = draftKey(tabId) })
+  let stopped = false
+  void claimTabId(tabId).then((claimed) => { tabId = claimed })
 
-  function flush(): void {
+  /** True when nothing is left unsaved. */
+  function flush(): boolean {
     const text = readText()
     // A forked tab saves its copied text under its new key even without edits.
-    if (key === savedKey && text === savedText) return
+    if (tabId === savedId && text === savedText) return true
     try {
       // Empty text is a saved deletion, not a missing draft.
-      window.localStorage.setItem(key, text)
-      savedKey = key
+      window.localStorage.setItem(draftKey(tabId), text)
+      savedId = tabId
       savedText = text
+      return true
     } catch {
       // Leave changes pending so the next interval or page hide can retry.
+      return false
     }
   }
 
@@ -110,10 +163,57 @@ export function startDraftAutosave(readText: () => string): () => void {
   window.addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', onVisibilityChange)
 
-  return () => {
-    window.clearInterval(interval)
-    window.removeEventListener('pagehide', flush)
-    document.removeEventListener('visibilitychange', onVisibilityChange)
-    flush()
+  return {
+    stop() {
+      stopped = true
+      window.clearInterval(interval)
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      flush()
+    },
+
+    /** Saved, non-empty drafts other than this tab's that no open tab holds. */
+    async list() {
+      const held = await heldTabIds()
+      const drafts: DraftSummary[] = []
+      try {
+        const storage = window.localStorage
+        for (let index = 0; index < storage.length; index++) {
+          const key = storage.key(index)
+          if (!key?.startsWith(DRAFT_KEY_PREFIX)) continue
+          const id = key.slice(DRAFT_KEY_PREFIX.length)
+          const text = storage.getItem(key)
+          if (id === tabId || held.has(id) || !text?.trim()) continue
+          drafts.push({ id, preview: previewOf(text) })
+        }
+      } catch {
+        // Unavailable storage has no drafts to offer.
+      }
+      return drafts.sort((a, b) => a.preview.localeCompare(b.preview))
+    },
+
+    /** Save this draft, then make `id` this tab's draft; null if it is unavailable. */
+    async open(id) {
+      if (stopped || id === tabId || !(await tryLock(id))) return null
+      let text: string | null = null
+      try {
+        text = window.localStorage.getItem(draftKey(id))
+      } catch {
+        // Treated as unavailable below.
+      }
+      // Never switch away from changes that could not be saved.
+      if (stopped || text === null || !flush()) {
+        releaseLock(id)
+        return null
+      }
+      const previous = tabId
+      writeTabId(id)
+      tabId = savedId = id
+      savedText = text
+      claims.set(id, Promise.resolve(id))
+      // The previous draft stays saved and becomes available to other tabs.
+      releaseLock(previous)
+      return text
+    },
   }
 }

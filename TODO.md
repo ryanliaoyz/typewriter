@@ -25,6 +25,7 @@
 - [x] Show failed checks with an amber wavy underline and a version-safe inline Retry card in development and production.
 - [x] Add three-minute local draft autosave during continuous typing, restore on reopen, save deletions, and flush on page hide/reload.
 - [x] Keep each tab's draft separate so tabs never overwrite each other.
+- [x] Add a navigation bar under the header with last save, model, and latency placeholders and an **Open** list for retrieving saved drafts.
 - [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
 
 ## Later

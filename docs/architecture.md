@@ -47,7 +47,7 @@ IDs, cached suggestions, failures, and undo history remain session-local
 (invariants 1, 2, and 5).
 
 `startDraftAutosave(readText)` consumes a function that reads the latest canonical
-text and returns a cleanup function. A fixed **180,000 ms** interval saves only
+text and returns a draft session with `stop`, `list`, and `open`. A fixed **180,000 ms** interval saves only
 when text differs from the last restored or successfully saved text. Typing never
 resets the timer. Shortening a draft, whitespace-only changes, and clearing it to
 an empty string all count as changes; unchanged or reverted text needs no write.
@@ -55,7 +55,7 @@ Saving is independent of sentence completion and model requests (invariants 1, 8
 and 9).
 
 The same synchronous flush runs when `visibilitychange` reports a hidden document,
-on `pagehide` (including reload/navigation), and on session cleanup. Cleanup also
+on `pagehide` (including reload/navigation), and on `stop`. Stopping also
 removes the timer and listeners, including during React Strict Mode effect replay.
 The reader uses the session's current-state reference so even an edit immediately
 followed by page hide is saved before React renders it. Becoming visible again
@@ -70,7 +70,17 @@ ID already held forks to a new ID, keeping its copied text and saving it under t
 new key at the next flush. Without Web Locks, the claim is assumed. If
 sessionStorage is unavailable, the ID lasts only for the page load. The first new
 tab adopts a draft saved under the old single `typewriter:draft` key and removes
-it. Drafts of closed tabs remain stored but are not offered to new tabs.
+it.
+
+`list()` returns a short single-line preview of each saved, non-blank draft other
+than this tab's, leaving out drafts whose Web Lock another open tab holds (from
+`navigator.locks.query()`). `open(id)` claims that draft's lock, saves this tab's
+current text, makes the chosen ID this tab's draft, and releases the previous one.
+The previous draft stays saved and can be opened again, so drafts of closed tabs
+can be recovered. It returns the chosen text, or null if another tab holds the
+draft, it is missing, or the current text could not be saved. Without Web Locks,
+held drafts cannot be detected, so every other draft is listed and opening is not
+exclusive.
 
 ## Sentence segmentation
 
@@ -390,7 +400,10 @@ one sequential queue, and current failures
 by sentence occurrence. It consumes editor text and optional exact edit ranges, retry and suggestion actions,
 and asynchronous client results, and produces state, `updateText`, `retry`,
 `accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
-9, and 10).
+9, and 10). It also produces `listDrafts` and `openDraft` from the draft session,
+plus a `draftId` that changes after each opened draft. An opened draft replaces the
+document with fresh sentence records, clears failures, and feeds the queue like any
+other publication.
 
 Every edit reconciles state and immediately feeds it to the queue. A current-state
 reference is updated before publishing React state, so a model response always
@@ -422,6 +435,16 @@ header with a decorative, screen-reader-hidden accent. Drafts persist per tab in
 browser profile and origin through the local draft module. The editor has an accessible
 name without a visible label or instructional copy. The inspector retains its
 controls and state data (invariants 1 and 9).
+`App` keys the editor by `draftId`, so an opened draft gets a fresh editor and undo
+history cannot cross drafts.
+
+[`src/AppNav.tsx`](../src/AppNav.tsx) is the navigation bar directly beneath the
+header. It consumes `listDrafts` and `openDraft` and produces a row with **Last
+save**, **Open**, **Model**, and **Latency**. Last save, Model, and Latency show a
+"—" placeholder and are not connected yet. **Open** lists the saved drafts with
+their previews, or "No other saved drafts." Choosing one opens it and returns
+focus to **Open**; if another tab took it meanwhile, the list refreshes. Escape and
+clicks outside close the list.
 `App` also passes current failure captures and the retry action to the editor.
 Failed sentences have amber wavy underlines and an inline error/Retry card in
 development and production/preview. After fixing server setup, retry without
@@ -636,7 +659,10 @@ and the real editor-session hook to cover uninterrupted typing across multiple
 three-minute intervals, unchanged/reverted drafts, partial and complete deletion,
 whitespace-only drafts, same-turn page-hide edits, hide/resume, unavailable/full
 storage and recovery, Strict Mode cleanup, separate per-tab drafts, legacy-draft
-migration, and duplicated-tab forking. App tests verify verbatim reopening
+migration, and duplicated-tab forking. [`src/AppNav.test.tsx`](../src/AppNav.test.tsx)
+covers the navigation order and placeholders, opening another draft while keeping
+the previous one saved and listed, the empty list and Escape, and leaving out drafts
+another tab holds. App tests verify verbatim reopening
 in development and production, including Unicode and CR/LF whitespace.
 
 Additional editor-to-queue regressions in

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { readDraft, startDraftAutosave } from '../document/draft'
+import type { DraftSession, DraftSummary } from '../document/draft'
 import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
@@ -22,8 +23,17 @@ export function useSentenceEditor() {
   const currentFailures = useRef<readonly Failure[]>([])
   const current = useRef(state)
   const queue = useRef<ReturnType<typeof createSentenceQueue> | null>(null)
+  const draft = useRef<DraftSession | null>(null)
+  const [draftId, setDraftId] = useState('')
 
-  useEffect(() => startDraftAutosave(() => current.current.document.text), [])
+  useEffect(() => {
+    const session = startDraftAutosave(() => current.current.document.text)
+    draft.current = session
+    return () => {
+      session.stop()
+      if (draft.current === session) draft.current = null
+    }
+  }, [])
 
   function publishFailures(next: readonly Failure[]): void {
     currentFailures.current = next
@@ -101,5 +111,19 @@ export function useSentenceEditor() {
     return true
   }
 
-  return { state, updateText, failures, retry, accept, reject }
+  async function listDrafts(): Promise<DraftSummary[]> {
+    return await draft.current?.list() ?? []
+  }
+
+  /** Switch this tab to another saved draft; its sentences start a fresh session. */
+  async function openDraft(id: string): Promise<boolean> {
+    const text = await draft.current?.open(id)
+    if (text == null) return false
+    publish(createSentenceDocument(text))
+    publishFailures([])
+    setDraftId(id)
+    return true
+  }
+
+  return { state, updateText, failures, retry, accept, reject, draftId, listDrafts, openDraft }
 }

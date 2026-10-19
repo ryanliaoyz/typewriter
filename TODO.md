@@ -22,6 +22,9 @@
 - [x] Evaluate corrections with `tests.txt` and document runnable setup commands.
 - [x] Add a 60-case annotated editing benchmark with semantic contrast pairs and suite selection.
 - [x] Evaluate newly installed models on editing-v1 against a same-suite baseline and document results.
+- [x] Show failed checks with an amber wavy underline and a version-safe inline Retry card in development and production.
+- [ ] Autosave changed drafts locally every three minutes during editing and restore them on reopening.
+- [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
 
 ## Later
 

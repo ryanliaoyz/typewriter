@@ -28,5 +28,9 @@ export const fireEvent = {
 }
 
 export function highlights() {
-  return Array.from(document.querySelectorAll<HTMLElement>('.cm-content [data-sentence-id]'))
+  return Array.from(document.querySelectorAll<HTMLElement>('.cm-content .sentence-highlight'))
+}
+
+export function failureHighlights() {
+  return Array.from(document.querySelectorAll<HTMLElement>('.cm-content .sentence-failure'))
 }

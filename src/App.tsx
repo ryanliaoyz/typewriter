@@ -10,7 +10,7 @@ export default function App() {
       <header className="app-header">
         <h1>Typewriter<span className="brand-dot" aria-hidden="true">.</span></h1>
       </header>
-      <SentenceEditor state={state} updateText={updateText} accept={accept} reject={reject} />
+      <SentenceEditor state={state} updateText={updateText} failures={failures} retry={retry} accept={accept} reject={reject} />
       {import.meta.env.DEV && <DebugInspector state={state} failures={failures} retry={retry} />}
     </main>
   )

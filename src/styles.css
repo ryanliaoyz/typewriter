@@ -16,6 +16,7 @@
   --focus: #387558;
   --highlight: #edf2d9;
   --highlight-line: #849153;
+  --failure-line: #a86c00;
 }
 
 * {
@@ -127,21 +128,30 @@ button:focus-visible {
   tab-size: 4;
 }
 
-.sentence-highlight {
+.sentence-highlight,
+.sentence-failure {
   display: inline;
   padding: 0;
   border: 0;
   border-radius: 0.15rem;
   font: inherit;
   color: inherit;
-  background: var(--highlight);
   text-decoration: underline;
-  text-decoration-color: var(--highlight-line);
   text-underline-offset: 0.2em;
   text-decoration-thickness: 1px;
   white-space: inherit;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.sentence-highlight {
+  background: var(--highlight);
+  text-decoration-color: var(--highlight-line);
+}
+
+.sentence-failure {
+  text-decoration-style: wavy;
+  text-decoration-color: var(--failure-line);
 }
 
 .sentence-highlight:hover {
@@ -168,6 +178,11 @@ button:focus-visible {
 .comparison-suggested {
   padding-left: 0.875rem;
   border-left: 2px solid var(--accent);
+}
+
+.comparison-failure {
+  padding-left: 0.875rem;
+  border-left: 2px solid var(--failure-line);
 }
 
 .comparison-actions {
@@ -318,7 +333,12 @@ button:focus-visible {
     text-decoration-color: Highlight;
   }
 
-  .comparison-suggested {
+  .sentence-failure {
+    text-decoration-color: LinkText;
+  }
+
+  .comparison-suggested,
+  .comparison-failure {
     border-color: Highlight;
   }
 }

@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { redo, undo } from '@codemirror/commands'
 import { act, render, screen } from '@testing-library/react'
-import { editorView, fireEvent, highlights, readEditor } from '../test/editor'
+import { editorView, failureHighlights, fireEvent, highlights, readEditor } from '../test/editor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import type { SentenceDocumentState } from '../document/sentences'
@@ -37,6 +37,83 @@ afterEach(() => {
 })
 
 describe('editor → queue → Ollama integration', () => {
+  it('retries independent inline failures sequentially in production and recovers after another failure', async () => {
+    vi.stubEnv('DEV', false)
+    const active = deferred()
+    const fetch = vi.fn().mockResolvedValueOnce(new Response('offline', { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ choices: [] })).mockReturnValueOnce(active.promise)
+      .mockRejectedValueOnce(new Error('still offline')).mockResolvedValueOnce(response('Same.'))
+      .mockResolvedValueOnce(response('Different.')).mockResolvedValueOnce(response('Different.'))
+    vi.stubGlobal('fetch', fetch)
+    render(<App />)
+    const editor = screen.getByRole('textbox')
+    const text = 'Same. Same. Next.'
+    fireEvent.change(editor, { target: { value: text } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(screen.queryByText('Debug state')).not.toBeInTheDocument()
+    expect(failureHighlights()).toHaveLength(2)
+    expect(highlights()).toHaveLength(0)
+    expect(fetch).toHaveBeenCalledTimes(3)
+    const secondId = failureHighlights()[1].dataset.sentenceId
+    fireEvent.click(failureHighlights()[1])
+    expect(screen.getByRole('dialog', { name: 'Sentence check failed' })).toHaveTextContent('unusable response')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(editor).toHaveFocus()
+    expect(failureHighlights()).toHaveLength(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    active.resolve(response('Next.'))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(4)
+    expect(failureHighlights()).toHaveLength(2)
+    expect(failureHighlights()[1]).toHaveAttribute('data-sentence-id', secondId)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(failureHighlights()[1])
+    expect(screen.getByRole('dialog')).toHaveTextContent('still offline')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await settle()
+    expect(failureHighlights()).toHaveLength(1)
+    expect(failureHighlights()[0]).not.toHaveAttribute('data-sentence-id', secondId)
+    fireEvent.click(failureHighlights()[0])
+    expect(screen.getByRole('dialog')).toHaveTextContent('HTTP 503')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await settle()
+    expect(fetch).toHaveBeenCalledTimes(7)
+    expect(failureHighlights()).toHaveLength(0)
+    expect(highlights()).toHaveLength(1)
+    expect(readEditor(editor)).toBe(text)
+    fireEvent.click(highlights()[0])
+    expect(screen.getByRole('dialog', { name: 'Sentence comparison' })).toHaveTextContent('Different.')
+  })
+
+  it('invalidates an open production failure card on edit and ignores its stale Retry action', async () => {
+    vi.stubEnv('DEV', false)
+    const current = deferred()
+    const fetch = vi.fn().mockRejectedValueOnce(new Error('offline')).mockReturnValueOnce(current.promise)
+    vi.stubGlobal('fetch', fetch)
+    render(<App />)
+    const editor = screen.getByRole('textbox')
+    fireEvent.change(editor, { target: { value: 'First.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    fireEvent.click(failureHighlights()[0])
+    const staleRetry = screen.getByRole('button', { name: 'Retry' })
+    fireEvent.change(editor, { target: { value: 'Changed.' } })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(failureHighlights()).toHaveLength(0)
+    fireEvent.click(staleRetry)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[1].content).toBe('Changed.')
+    fireEvent.change(editor, { target: { value: '' } })
+    current.resolve(new Response('late failure', { status: 500 }))
+    await settle()
+    expect(failureHighlights()).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(readEditor(editor)).toBe('')
+  })
+
   it('does not transfer an in-flight suggestion to an identical reinserted duplicate', async () => {
     const first = deferred()
     const fetch = vi.fn().mockReturnValueOnce(first.promise)

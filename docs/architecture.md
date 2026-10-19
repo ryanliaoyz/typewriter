@@ -382,10 +382,11 @@ header with a decorative, screen-reader-hidden accent. Drafts live only in the
 current page session; no persistence is implemented. The editor has an accessible
 name without a visible label or instructional copy. The inspector retains its
 controls and state data (invariants 1 and 9).
-After fixing server setup, retry failed sentences without reloading or
-changing the draft. Failure controls also implement invariant 10. For now, failure
-details and Retry buttons live exclusively inside the collapsed **Debug state**
-disclosure; production/preview do not expose them.
+`App` also passes current failure captures and the retry action to the editor.
+Failed sentences have amber wavy underlines and an inline error/Retry card in
+development and production/preview. After fixing server setup, retry without
+reloading or changing the draft (invariant 10). The development inspector retains
+its failure list and raw response diagnostics.
 
 With `npm run dev`, expand **Debug state** below the editor to inspect the same
 live state used by the editor. [`src/DebugInspector.tsx`](../src/DebugInspector.tsx)
@@ -421,13 +422,14 @@ For manual validation:
 ## Inline editor and suggestion review
 
 [`src/SentenceEditor.tsx`](../src/SentenceEditor.tsx) consumes canonical
-sentence-document state and edit/accept/reject callbacks. It produces one editable
-plain-text document with sentence marks and an anchored original/suggested review
-card. It integrates `@codemirror/state`, `@codemirror/view`, and
+sentence-document state, current failure captures, and edit/accept/reject/retry
+callbacks. It produces one editable plain-text document with suggestion and
+failure marks and an anchored comparison or failure/Retry card.
+It integrates `@codemirror/state`, `@codemirror/view`, and
 `@codemirror/commands` directly, without a rich-text schema or React wrapper.
 CodeMirror supplies editing, wrapping, history, mark decorations, and tooltip
 positioning; the application keeps sentence identity and checking outside it
-(invariants 1–4 and 9).
+(invariants 1–4, 9, and 10).
 
 The adapter publishes exact UTF-16 replacements to the session. Disjoint changes
 are applied in order with adjusted offsets. LF is the explicit line separator;
@@ -439,32 +441,46 @@ Undo/redo are ordinary document edits and recheck through the existing queue;
 they do not restore obsolete model results. The view is destroyed on unmount,
 including React Strict Mode's effect replay.
 
-Selection stores an occurrence ID and version and resolves against current
-records. Offset shifts preserve selection; edits, deletion, splits, merges, or
-loss of suggestion status clear it permanently. Identical sentences remain
+Selection stores an occurrence ID, version, and review kind and resolves against
+current records. Offset shifts preserve selection; edits, deletion, splits,
+merges, loss of a suggestion/failure, or a change of review kind clear it
+permanently. Identical sentences remain
 independent. Stale marks disappear immediately on editing, before React publishes
 updated records. The card retains its DOM and focused controls across unrelated
 results and offset-only moves. All original/model text is literal text, not HTML.
 
 Click/tap a marked sentence to open the non-modal review card. Keyboard users can
 place the caret in a marked sentence and press **Alt+Enter**, which opens the card
-and focuses Accept. Its native buttons support Tab navigation; **Escape** or
-Close returns focus to the editor. Clicking unmarked editor text also dismisses
-the card. Accept/reject send the displayed versioned capture through the existing
-session guards. Reject and Close do not change document text. The same interaction
-works in development and production.
+and focuses Accept for a suggestion or Retry for a failure. Its native buttons
+support Tab navigation; **Escape** or Close returns focus to the editor. Clicking
+unmarked editor text also dismisses the card. Accept/reject send the displayed
+versioned capture through the existing session guards. Reject and Close do not
+change document text. The same interaction works in development and production.
+
+Failure marks are derived by joining failures to current unchecked records by
+occurrence ID, version, and input text; they use current offsets rather than
+captured ranges. Their card shows the sentence, error reason, and **Retry**, with
+literal text rendering. Retry sends the captured identity/input through the
+session's existing guards and sequential queue, closes the card, and restores
+editor focus. An accepted retry removes that failure mark while the work waits
+or runs; another failure restores it without reopening the card. No failure
+becomes a clean result, suggestion, or document edit. Raw response diagnostics
+remain in the development inspector (invariants 4–6 and 10).
 
 [`src/styles.css`](../src/styles.css) consumes editor/card class names and supplies
-prose typography, sentence highlights, focus indicators, and a viewport-bounded,
+prose typography, sentence highlights, amber wavy failure underlines, focus indicators, and a viewport-bounded,
 scrollable comparison card. Shared CSS variables define a warm neutral canvas,
 white writing surface, muted green accent, borders, and text colors. The editor
 uses 18px prose text with generous line spacing; padding tightens on small screens.
 The card groups primary Accept and secondary Reject actions, with a compact close
-button retaining the accessible name **Close comparison**. Debug state stays
+button retaining the accessible name **Close comparison** or **Close failure details**.
+Failure cards use the same layout with a Retry action and amber error accent.
+Debug state stays
 visually subdued. Focus indicators and forced-color styles preserve keyboard
-visibility. There are no external fonts, added UI dependencies, animations, or
+visibility; failures retain their distinct wavy underline in forced colors.
+There are no external fonts, added UI dependencies, animations, or
 changes to checking behavior. This module changes presentation only (invariants
-1 and 9).
+1, 9, and 10).
 
 ## Connected model integration and suggestion actions
 
@@ -558,6 +574,12 @@ editor tests also cover exact edit captures, disjoint transaction edits, CR/LF a
 Unicode preservation, one writing surface, card focus during unrelated results,
 Alt+Enter/Escape, and acceptance undo/redo. `src/test/editor.ts` provides transaction
 helpers for component fixtures rather than pretending contenteditable is a textarea.
+Inline failure tests cover current-version matching, independent duplicates,
+literal error text, keyboard Retry and focus restoration, offset shifts, stale
+cards after edits/splits/merges/deletion, and switching from a failure to a
+suggestion. Production-mode integration tests exercise the visible Retry flow
+with mocked HTTP, including invalid responses, repeated failures and recovery,
+waiting behind active inference, and ignoring stale Retry actions and late errors.
 A headless Chromium smoke check with mocked inference verified duplicate acceptance,
 undo/redo, keyboard focus, mobile wrapping/scroll positioning, and IME composition;
 Firefox, Safari, and native platform input methods remain unvalidated. Refinement

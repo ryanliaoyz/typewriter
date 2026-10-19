@@ -42,7 +42,7 @@ The inspector is absent from production builds.
 | `npm run preview` | Serve the production build locally after building |
 | `npm test` | Run tests once |
 | `npm run test:watch` | Run tests in watch mode |
-| `npm run evaluate:model` | Evaluate 37 inputs against a running Ollama model; emit JSONL |
+| `npm run evaluate:model` | Evaluate the default 37-case suite; select the 60-case benchmark with `EVALUATION_SUITE=editing-v1` |
 | `npm run evaluate:summarize -- <run.jsonl>` | Summarize a complete evaluation run |
 
 ## Model server setup
@@ -90,5 +90,6 @@ from cached results. Model responses must never silently replace editor text.
 ## Further reading
 
 See [architecture and module details](docs/architecture.md) for data flow and
-configuration, and [model evaluation](docs/evaluation.md) for model choices,
-reproduction commands, scoring, and limitations. [`TODO.md`](TODO.md) tracks work.
+configuration, [model evaluation](docs/evaluation.md) for the earlier comparison,
+and the [60-case benchmark rubric](benchmarks/editing-v1/rubric.md) for annotated
+cases, commands, and scoring. [`TODO.md`](TODO.md) tracks work.

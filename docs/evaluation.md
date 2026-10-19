@@ -24,6 +24,13 @@ default model is not automatically changed by the comparison.
 
 ## Cases and review rubric
 
+The recorded results on this page use the **legacy 37-case suite**, still the
+default. The newer [60-case editing-v1 benchmark](../benchmarks/editing-v1/rubric.md)
+adds predeclared correction requirements, protected meaning, valid-prose controls,
+and semantic contrast pairs. Select it with `EVALUATION_SUITE=editing-v1`; it has
+not been evaluated against models as part of its addition. It is synthetic
+development material, not a held-out corpus. Do not mix its scores with these runs.
+
 [`tests.txt`](../tests.txt) is unchanged: samples 1–8 primarily test grammar,
 9–16 compression, and 17–24 valid prose. These categories are review aids, not
 exclusive linguistic labels. [`scripts/evaluation-cases.mjs`](../scripts/evaluation-cases.mjs)
@@ -100,6 +107,10 @@ Large raw JSONL traces are local evaluation artifacts, not files to commit.
 the default is `http://127.0.0.1:11434`. `OLLAMA_MODEL` defaults to the Gemma tag.
 `EVALUATION_REPEATS` accepts 1–3 and defaults to 1. The evaluator **does not read
 `.env.local` or `VITE_*` settings**. Those configure the browser application only.
+`EVALUATION_SUITE` accepts `legacy` (default, the 37 inputs recorded here) or
+`editing-v1` (60 annotated inputs). Unknown names are rejected before server
+requests. For editing-v1 commands, schema, and manual scoring, see its
+[rubric](../benchmarks/editing-v1/rubric.md#reproduction-and-versioning).
 Node 22.14 uses `--experimental-strip-types` to load the shared TypeScript checker;
 its experimental warning is written to stderr, not the JSONL stream.
 
@@ -128,6 +139,11 @@ Each stdout line is JSON:
 1. **`run`:** schema version, date, exact tag/digest, model details and inherited
    parameters, Node/platform/Ollama versions, content hashes, settings, repeat count,
    and case count.
+   New runs use schema version 2 and include a `suite` object with name/version;
+   editing-v1 also records dataset and rubric SHA-256 hashes in that object.
+   Legacy runs retain `testsSha256`; `casesSha256` hashes the selected complete
+   case list in either suite. The summarizer also accepts the earlier schema-1
+   manifests without a suite field, treating them as legacy.
 2. **`warmup`:** elapsed loading time and Ollama's residency snapshot.
 3. **`case`:** model, repeat, stable case ID/category, original input, outcome,
    published result or `null`, elapsed milliseconds, word counts on success,
@@ -140,6 +156,10 @@ are measured model outcomes, not script failures; transport errors set a nonzero
 exit status. Neither exit status zero nor convergence certifies correction quality.
 Latency summaries include failures and also provide stable-result-only median/p95,
 so fast failures cannot masquerade as fast usable suggestions.
+For editing-v1 it additionally reports exact equality on explicit unchanged
+controls and identical final texts for stabilized contrast-pair members. Those
+collision flags are diagnostic, not automatic judgments of semantic fidelity.
+The annotations are retained in case records for review, but never sent to Ollama.
 
 ## Decision rule
 

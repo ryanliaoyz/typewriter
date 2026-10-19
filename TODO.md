@@ -20,6 +20,7 @@
 - [x] Modernize the minimal writing interface with responsive spacing, softer colors, prose typography, and refined suggestion controls.
 - [x] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
 - [x] Evaluate corrections with `tests.txt` and document runnable setup commands.
+- [x] Add a 60-case annotated editing benchmark with semantic contrast pairs and suite selection.
 
 ## Later
 

@@ -83,7 +83,7 @@ describe('model evaluation uses the application checking contract', () => {
     try {
       const address = server.address()
       if (!address || typeof address === 'string') throw new Error('Missing test server address')
-      const env = { ...process.env, OLLAMA_MODEL: 'test', OLLAMA_SERVER_URL: `http://127.0.0.1:${address.port}`, EVALUATION_REPEATS: '2' }
+      const env = { ...process.env, EVALUATION_SUITE: 'legacy', OLLAMA_MODEL: 'test', OLLAMA_SERVER_URL: `http://127.0.0.1:${address.port}`, EVALUATION_REPEATS: '2' }
       const { stdout } = await promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env, maxBuffer: 2_000_000 })
       const records = stdout.trim().split('\n').map(line => JSON.parse(line))
       expect(records[0]).toMatchObject({ type: 'run', model: 'test', digest: 'test-digest', repeats: 2, caseCount: 37 })
@@ -94,6 +94,8 @@ describe('model evaluation uses the application checking contract', () => {
       expect(requests[0]).toMatchObject({ temperature: 0, max_tokens: 2048, reasoning_effort: 'none' })
       const summary = summarize(records)
       expect(summary).toMatchObject({ outcomes: { stable: 74, error: 0 }, clean: 74, requests: 74, repeatDifferences: [] })
+      const oldManifest = records.map(record => record.type === 'run' ? { ...record, schemaVersion: 1, suite: undefined } : record)
+      expect(summarize(oldManifest)).toMatchObject({ suite: { name: 'legacy', version: 1 }, caseCount: 37 })
       const changed = records.map(record => record.type === 'case' && record.repeat === 2 && record.id === 'sample-01'
         ? { ...record, outcome: 'cycle', status: undefined, result: null } : record)
       expect(summarize(changed)).toMatchObject({ outcomes: { stable: 73, cycle: 1 }, repeatDifferences: ['sample-01'] })
@@ -104,6 +106,41 @@ describe('model evaluation uses the application checking contract', () => {
       await expect(promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env: { ...env, EVALUATION_REPEATS: '0' } })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('EVALUATION_REPEATS') })
       await expect(promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env: { ...env, OLLAMA_MODEL: 'missing' } })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('not installed') })
       await expect(promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env: { ...env, OLLAMA_SERVER_URL: 'file:///tmp' } })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('HTTP(S)') })
+      await expect(promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env: { ...env, EVALUATION_SUITE: 'unknown' } })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('EVALUATION_SUITE') })
+
+      requests.length = 0
+      const benchmark = await promisify(execFile)(process.execPath, ['--experimental-strip-types', 'scripts/evaluate-model.mjs'], { env: { ...env, EVALUATION_SUITE: 'editing-v1' }, maxBuffer: 4_000_000 })
+      const benchmarkRecords = benchmark.stdout.trim().split('\n').map(line => JSON.parse(line))
+      expect(benchmarkRecords[0]).toMatchObject({ schemaVersion: 2, caseCount: 60, repeats: 2, suite: { name: 'editing-v1', version: 1 } })
+      expect(benchmarkRecords[0].suite.datasetSha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(benchmarkRecords[0].suite.rubricSha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(requests).toHaveLength(120)
+      expect(maxActive).toBe(1)
+      const prompt = await readFile(new URL('../prompt.txt', import.meta.url), 'utf8')
+      for (const [index, request] of requests.entries()) {
+        const messages = request.messages as { role: string, content: string }[]
+        expect(messages.map(message => message.role)).toEqual(['system', 'user'])
+        expect(messages[0].content).toBe(prompt)
+        expect(messages[1].content).toBe(benchmarkRecords[index + 2].input)
+        expect(Object.keys(messages[1])).toEqual(['role', 'content'])
+      }
+      expect(summarize(benchmarkRecords)).toMatchObject({ suite: { name: 'editing-v1', version: 1 },
+        unchangedControls: { total: 24, stable: 24, unchanged: 24 },
+        contrastPairs: { total: 24, comparable: 24, withheld: 0, collisions: [] } })
+      const pairCollision = benchmarkRecords.map(record => record.type === 'case' && record.id === 'P01A' && record.repeat === 1
+        ? { ...record, status: 'suggestion', result: 'The board has closed the branch.' } : record)
+      expect(summarize(pairCollision).contrastPairs.collisions).toEqual([{ pairId: 'P01', repeat: 1 }])
+      const changedControl = benchmarkRecords.map(record => record.type === 'case' && record.id === 'N01' && record.repeat === 1
+        ? { ...record, status: 'suggestion', result: 'The equipment is prepared.' } : record)
+      expect(summarize(changedControl).unchangedControls).toEqual({ total: 24, stable: 24, unchanged: 23 })
+      const withheld = benchmarkRecords.map(record => record.type === 'case' && ['P01A', 'N01'].includes(record.id) && record.repeat === 1
+        ? { ...record, outcome: 'cycle', status: undefined, result: null } : record)
+      expect(summarize(withheld)).toMatchObject({ unchangedControls: { total: 24, stable: 23, unchanged: 23 },
+        contrastPairs: { total: 24, comparable: 23, withheld: 1, collisions: [] } })
+      const malformedPair = benchmarkRecords.map(record => record.type === 'case' && record.id === 'P01A' ? { ...record, variant: 'B' } : record)
+      expect(() => summarize(malformedPair)).toThrow('Incomplete contrast pair')
+      const invalidVariant = benchmarkRecords.map(record => record.type === 'case' && record.id === 'P01A' ? { ...record, variant: 'C' } : record)
+      expect(() => summarize(invalidVariant)).toThrow('pair metadata')
     } finally {
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))

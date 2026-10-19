@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { createOllamaChecker, MAX_EDIT_PASSES, REQUEST_TIMEOUT_MS, UnusableResponseError } from '../src/checking/ollamaCore.ts'
-import { evaluationCases } from './evaluation-cases.mjs'
+import { loadEvaluationSuite } from './evaluation-suites.mjs'
 
 export async function evaluateCase(check, sample) {
   const started = performance.now()
@@ -30,8 +30,7 @@ async function main() {
   const repeats = Number(process.env.EVALUATION_REPEATS || 1)
   if (!Number.isInteger(repeats) || repeats < 1 || repeats > 3) throw new Error('EVALUATION_REPEATS must be 1, 2, or 3.')
   const prompt = await readFile(new URL('../prompt.txt', import.meta.url), 'utf8')
-  const tests = await readFile(new URL('../tests.txt', import.meta.url), 'utf8')
-  const cases = evaluationCases(tests)
+  const { cases, ...suite } = await loadEvaluationSuite(process.env.EVALUATION_SUITE || 'legacy')
   async function metadata(path, body, timeoutMs = 10_000) {
     const response = await fetch(`${serverUrl}${path}`, {
       ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
@@ -45,10 +44,10 @@ async function main() {
   const installed = tags.models?.find(item => item.name === model || item.model === model)
   if (!installed) throw new Error(`Model ${model} is not installed. Pull it explicitly before evaluation.`)
   const show = await metadata('/api/show', { model })
-  console.log(JSON.stringify({ type: 'run', schemaVersion: 1, startedAt: new Date().toISOString(),
+  console.log(JSON.stringify({ type: 'run', schemaVersion: 2, suite, startedAt: new Date().toISOString(),
     model, digest: installed.digest, modelDetails: installed.details, modelParameters: show.parameters,
     node: process.version, platform: process.platform, ollamaVersion: version.version,
-    promptSha256: hash(prompt), testsSha256: hash(tests), casesSha256: hash(JSON.stringify(cases)),
+    promptSha256: hash(prompt), ...(suite.testsSha256 ? { testsSha256: suite.testsSha256 } : {}), casesSha256: hash(JSON.stringify(cases)),
     settings: { temperature: 0, maxTokens: 2048, reasoningEffort: 'none', maxPasses: MAX_EDIT_PASSES, timeoutMs: REQUEST_TIMEOUT_MS },
     repeats, caseCount: cases.length }))
 

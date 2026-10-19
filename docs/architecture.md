@@ -594,19 +594,40 @@ unchanged `tests.txt` contents and produces 37 occurrence-based, named cases: th
 24 fixture samples and 13 existing grammar/compression/fidelity regressions. It
 does not provide an exact-output oracle or modify editor state (invariants 1, 8).
 
-[`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) consumes that case
-list, `prompt.txt`, and `OLLAMA_MODEL`/`OLLAMA_SERVER_URL`/`EVALUATION_REPEATS`
-environment settings. It uses the shared checker directly and produces a JSONL
-run manifest, loading/residency record, and per-case results with raw pass traces
-and timings. Inputs/repeats are sequential; unsuccessful attempts publish no
+[`scripts/evaluation-suites.mjs`](../scripts/evaluation-suites.mjs) selects the
+original `legacy` suite or `editing-v1`, consuming the suite name and local source
+files. It produces validated cases, suite identity, and source/rubric hashes.
+It rejects invalid annotations, duplicate IDs/inputs, and incomplete contrast
+pairs before any inference. The default remains the original 37 cases; unknown
+suite names are errors (invariants 8 and 10).
+
+[`benchmarks/editing-v1/cases.jsonl`](../benchmarks/editing-v1/cases.jsonl) contains
+60 synthetic annotated inputs: 12 grammar repairs, 12 compression targets, 12
+unchanged controls, and 24 inputs forming 12 contrast pairs. Records include
+required improvements, protected meaning, forbidden implications, illustrative
+references, provenance, and related-case families. They are draft development
+material, not independently reviewed held-out data. The paired
+[`rubric.md`](../benchmarks/editing-v1/rubric.md) defines manual review, metric
+denominators, limitations, and reproduction. References are not exact-output tests;
+only input text is submitted to the model (invariant 8).
+
+[`scripts/evaluate-model.mjs`](../scripts/evaluate-model.mjs) consumes the selected
+case list, `prompt.txt`, and `EVALUATION_SUITE`/`OLLAMA_MODEL`/`OLLAMA_SERVER_URL`/
+`EVALUATION_REPEATS` settings. It uses the shared checker directly and produces
+a JSONL run manifest with suite identity/hashes, a loading/residency record, and
+per-case results with raw pass traces and timings. Inputs/repeats are sequential;
+unsuccessful attempts publish no
 candidate, just as in the app. These script settings are separate from Vite's
 environment files. There is no editor state or exact-output comparison to
 `output.txt` (invariants 1, 6, 8, 10).
 
 [`scripts/summarize-evaluation.mjs`](../scripts/summarize-evaluation.mjs) consumes
 complete JSONL runs and produces outcome counts, median/p95/max sentence latency,
-request/pass counts, category counts, and differences between repetitions. It
-rejects incomplete/duplicate records. It never grades meaning or treats failed
+request/pass counts, category counts, differences between repetitions, exact
+unchanged-control counts, and final-text contrast-pair collision flags. It rejects
+incomplete/duplicate records and malformed pair groups. Earlier manifests without
+suite identity remain legacy. Equality/collisions are diagnostics: it never grades
+meaning, matches illustrative references as an oracle, or treats failed
 checks as clean (invariant 10).
 
 [`scripts/evaluate-model.test.ts`](../scripts/evaluate-model.test.ts) consumes
@@ -614,6 +635,12 @@ mock responses and a local fake HTTP server, and verifies fixtures, shared
 validation/refinement, sequential full CLI runs, metadata, configuration errors,
 and summary completeness without a running model. The Node CLI loads erasable
 TypeScript using `--experimental-strip-types`; the browser still builds with Vite.
+
+[`scripts/evaluation-suites.test.ts`](../scripts/evaluation-suites.test.ts) checks
+the 60-case distribution and IDs, related-case families, explicit control policy,
+pair membership, annotation requirements, source/rubric hashing, legacy fallback,
+and malformed-suite rejection. CLI tests cover both suites against a fake server
+and verify that rubric/reference metadata never leaks into inference requests.
 
 See [model evaluation](evaluation.md) for exact model choices, runnable commands,
 output schema, review rubric, current results, and validation limits. Stability

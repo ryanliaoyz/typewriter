@@ -24,8 +24,22 @@ export function summarize(records) {
   }
   const passes = cases.flatMap(item => item.passes)
   const stable = cases.filter(item => item.outcome === 'stable')
+  const controls = cases.filter(item => item.expectUnchanged === true)
+  const pairs = Map.groupBy(cases.filter(item => item.pairId), item => `${item.pairId}:${item.repeat}`)
+  const collisions = []
+  let comparablePairs = 0
+  for (const pair of pairs.values()) {
+    if (pair.length !== 2 || !pair.some(item => item.variant === 'A') || !pair.some(item => item.variant === 'B') ||
+      pair.some(item => item.id !== `${item.pairId}${item.variant}`) || pair[0].family !== pair[1].family ||
+      pair[0].pairDistinction !== pair[1].pairDistinction) throw new Error('Incomplete contrast pair or inconsistent pair metadata in run.')
+    if (pair.every(item => item.outcome === 'stable')) {
+      comparablePairs += 1
+      if (pair[0].result === pair[1].result) collisions.push({ pairId: pair[0].pairId, repeat: pair[0].repeat })
+    }
+  }
   return {
     model: run.model, digest: run.digest, caseCount: run.caseCount, repeats: run.repeats,
+    suite: run.suite ?? { name: 'legacy', version: 1 },
     outcomes, clean: cases.filter(item => item.status === 'clean').length,
     suggestions: cases.filter(item => item.status === 'suggestion').length,
     requests: passes.length, repeatDifferences,
@@ -37,6 +51,9 @@ export function summarize(records) {
       total: items.length, stable: items.filter(item => item.outcome === 'stable').length,
       unchanged: items.filter(item => item.status === 'clean').length,
     }])),
+    unchangedControls: { total: controls.length, stable: controls.filter(item => item.outcome === 'stable').length,
+      unchanged: controls.filter(item => item.outcome === 'stable' && item.result === item.input).length },
+    contrastPairs: { total: pairs.size, comparable: comparablePairs, withheld: pairs.size - comparablePairs, collisions },
   }
 }
 

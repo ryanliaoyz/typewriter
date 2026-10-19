@@ -7,6 +7,7 @@ reconciliation, result cache, sequential queue, and Ollama HTTP integration are
 implemented. Response validation, version-safe caching, and per-sentence failure
 notices with retry controls are connected. Sentence highlights and original/suggested
 comparisons and version-safe accept/reject actions are available.
+Draft restoration and three-minute local autosave are also implemented.
 
 ## Canonical document state
 
@@ -32,6 +33,36 @@ ambiguous; multiple changed portions are enclosed in a single replacement.
 Only the latest transition is retained, not an edit history.
 Suggestion acceptance supplies its known replacement range directly to sentence
 reconciliation instead of inferring a range from snapshots.
+
+## Local draft persistence
+
+[`src/document/draft.ts`](../src/document/draft.ts) owns one browser-local draft
+under the `typewriter:draft` localStorage key. `readDraft()` returns the saved text
+or an empty string when no draft is available. The editor session reads it before
+creating its initial state, then rebuilds sentence records and checking work. Only
+canonical text is persisted, verbatim, including whitespace and Unicode; sentence
+IDs, cached suggestions, failures, and undo history remain session-local
+(invariants 1, 2, and 5).
+
+`startDraftAutosave(readText)` consumes a function that reads the latest canonical
+text and returns a cleanup function. A fixed **180,000 ms** interval saves only
+when text differs from the last restored or successfully saved text. Typing never
+resets the timer. Shortening a draft, whitespace-only changes, and clearing it to
+an empty string all count as changes; unchanged or reverted text needs no write.
+Saving is independent of sentence completion and model requests (invariants 1, 8,
+and 9).
+
+The same synchronous flush runs when `visibilitychange` reports a hidden document,
+on `pagehide` (including reload/navigation), and on session cleanup. Cleanup also
+removes the timer and listeners, including during React Strict Mode effect replay.
+The reader uses the session's current-state reference so even an edit immediately
+followed by page hide is saved before React renders it. Becoming visible again
+continues the existing interval. Storage exceptions do not interrupt editing;
+failed writes stay pending for the next interval or lifecycle flush.
+
+The draft belongs to the current browser profile and page origin (including its
+port). Each origin has one draft; multiple tabs use the last successful write,
+without live synchronization or conflict resolution.
 
 ## Sentence segmentation
 
@@ -345,8 +376,9 @@ starts after unmount. Edits do not abort the active request or release its slot 
 
 ## Editor session and checking lifecycle
 
-[`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) owns
-the canonical sentence-document state, one sequential queue, and current failures
+[`src/checking/useSentenceEditor.ts`](../src/checking/useSentenceEditor.ts) restores
+the local draft and owns canonical sentence-document state, the autosave lifecycle,
+one sequential queue, and current failures
 by sentence occurrence. It consumes editor text and optional exact edit ranges, retry and suggestion actions,
 and asynchronous client results, and produces state, `updateText`, `retry`,
 `accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
@@ -378,8 +410,8 @@ before publishing React state so closely spaced callbacks preserve every failure
 
 [`src/App.tsx`](../src/App.tsx) connects `useSentenceEditor` state and actions to
 the single CodeMirror writing surface described below, beneath a compact wordmark
-header with a decorative, screen-reader-hidden accent. Drafts live only in the
-current page session; no persistence is implemented. The editor has an accessible
+header with a decorative, screen-reader-hidden accent. Drafts persist in the current
+browser profile and origin through the local draft module. The editor has an accessible
 name without a visible label or instructional copy. The inspector retains its
 controls and state data (invariants 1 and 9).
 After fixing server setup, retry failed sentences without reloading or
@@ -568,6 +600,13 @@ Suggestion-action tests cover guarded and repeated actions, duplicates, explicit
 replacement ranges, offset shifts, whitespace and Unicode preservation, split
 replacement text, per-version rejection, focus restoration, and actions during
 active inference without concurrent requests.
+
+[`src/checking/autosave.test.tsx`](../src/checking/autosave.test.tsx) uses fake timers
+and the real editor-session hook to cover uninterrupted typing across multiple
+three-minute intervals, unchanged/reverted drafts, partial and complete deletion,
+whitespace-only drafts, same-turn page-hide edits, hide/resume, unavailable/full
+storage and recovery, and Strict Mode cleanup. App tests verify verbatim reopening
+in development and production, including Unicode and CR/LF whitespace.
 
 Additional editor-to-queue regressions in
 [`src/checking/integration.test.tsx`](../src/checking/integration.test.tsx) use exact

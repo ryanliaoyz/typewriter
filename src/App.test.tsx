@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import { fireEvent, readEditor } from './test/editor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as sentenceDocument from './document/sentences'
 import type { SentenceDocumentState } from './document/sentences'
+import { DRAFT_STORAGE_KEY } from './document/draft'
 
 beforeEach(() => vi.useFakeTimers())
 
@@ -28,6 +29,20 @@ describe('App', () => {
     expect(editor).not.toHaveAttribute('aria-describedby')
     expect(screen.queryByText('Your writing')).not.toBeInTheDocument()
     expect(screen.queryByText(/Write or paste plain text/)).not.toBeInTheDocument()
+  })
+
+  it.each([true, false])('restores a saved draft verbatim on reopening (development: %s)', (development) => {
+    vi.stubEnv('DEV', development)
+    const text = '  <b>Not markup</b> 😀\r\n\n\tCafe\u0301.  '
+    const first = render(<App />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(localStorage.getItem(DRAFT_STORAGE_KEY)).toBe(text)
+    first.unmount()
+
+    render(<App />)
+    expect(readEditor(screen.getByRole('textbox', { name: 'Your writing' }))).toBe(text)
+    expect(screen.queryByText('Not markup')).not.toBeInTheDocument()
   })
 
   it('wires consecutive changes and deletion into the controlled editor', () => {

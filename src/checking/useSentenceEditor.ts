@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { readDraft, startDraftAutosave } from '../document/draft'
+import { readDraft, readDraftSavedAt, startDraftAutosave } from '../document/draft'
 import type { DraftSession, DraftSummary } from '../document/draft'
 import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
@@ -25,9 +25,11 @@ export function useSentenceEditor() {
   const queue = useRef<ReturnType<typeof createSentenceQueue> | null>(null)
   const draft = useRef<DraftSession | null>(null)
   const [draftId, setDraftId] = useState('')
+  // Read after the draft so a new tab's ID already exists.
+  const [lastSavedAt, setLastSavedAt] = useState(readDraftSavedAt)
 
   useEffect(() => {
-    const session = startDraftAutosave(() => current.current.document.text)
+    const session = startDraftAutosave(() => current.current.document.text, setLastSavedAt)
     draft.current = session
     return () => {
       session.stop()
@@ -117,13 +119,14 @@ export function useSentenceEditor() {
 
   /** Switch this tab to another saved draft; its sentences start a fresh session. */
   async function openDraft(id: string): Promise<boolean> {
-    const text = await draft.current?.open(id)
-    if (text == null) return false
-    publish(createSentenceDocument(text))
+    const opened = await draft.current?.open(id)
+    if (!opened) return false
+    publish(createSentenceDocument(opened.text))
+    setLastSavedAt(opened.savedAt)
     publishFailures([])
     setDraftId(id)
     return true
   }
 
-  return { state, updateText, failures, retry, accept, reject, draftId, listDrafts, openDraft }
+  return { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft }
 }

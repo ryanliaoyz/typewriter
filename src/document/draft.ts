@@ -1,17 +1,20 @@
 const LEGACY_DRAFT_KEY = 'typewriter:draft'
 const DRAFT_KEY_PREFIX = 'typewriter:draft:'
+const SAVED_AT_PREFIX = 'typewriter:saved:'
 const TAB_ID_KEY = 'typewriter:tab'
 const LOCK_PREFIX = 'typewriter:tab:'
 const AUTOSAVE_INTERVAL_MS = 3 * 60 * 1000
 const PREVIEW_LENGTH = 60
 
 export type DraftSummary = { readonly id: string, readonly preview: string }
+/** `savedAt` is the epoch time of the draft's last successful save, if recorded. */
+export type OpenedDraft = { readonly text: string, readonly savedAt: number | null }
 
 /** One tab's autosave lifecycle; `open` switches the tab to another saved draft. */
 export type DraftSession = {
   stop(): void
   list(): Promise<DraftSummary[]>
-  open(id: string): Promise<string | null>
+  open(id: string): Promise<OpenedDraft | null>
 }
 
 // Used only when sessionStorage cannot hold the tab ID; drafts then last one page load.
@@ -47,9 +50,28 @@ function draftKey(tabId: string): string {
   return `${DRAFT_KEY_PREFIX}${tabId}`
 }
 
+function currentTabId(): string {
+  return readTabId() ?? assignTabId()
+}
+
 /** Each tab is its own session: sessionStorage keeps its ID across reloads only. */
 export function draftStorageKey(): string {
-  return draftKey(readTabId() ?? assignTabId())
+  return draftKey(currentTabId())
+}
+
+function readSavedAt(tabId: string): number | null {
+  try {
+    const value = window.localStorage.getItem(`${SAVED_AT_PREFIX}${tabId}`)
+    const time = value === null ? NaN : Number(value)
+    return Number.isFinite(time) ? time : null
+  } catch {
+    return null
+  }
+}
+
+/** When this tab's draft was last saved; null for an unsaved or pre-timestamp draft. */
+export function readDraftSavedAt(): number | null {
+  return readSavedAt(currentTabId())
 }
 
 /** Hold a draft ID's Web Lock for the page lifetime; without Web Locks, assume it. */
@@ -131,8 +153,8 @@ export function readDraft(): string {
 }
 
 /** Read the latest canonical text at each save, independently of typing cadence. */
-export function startDraftAutosave(readText: () => string): DraftSession {
-  let tabId = draftStorageKey().slice(DRAFT_KEY_PREFIX.length)
+export function startDraftAutosave(readText: () => string, onSave?: (savedAt: number) => void): DraftSession {
+  let tabId = currentTabId()
   let savedId = tabId
   let savedText = readText()
   let stopped = false
@@ -148,11 +170,18 @@ export function startDraftAutosave(readText: () => string): DraftSession {
       window.localStorage.setItem(draftKey(tabId), text)
       savedId = tabId
       savedText = text
-      return true
     } catch {
       // Leave changes pending so the next interval or page hide can retry.
       return false
     }
+    const savedAt = Date.now()
+    try {
+      window.localStorage.setItem(`${SAVED_AT_PREFIX}${tabId}`, String(savedAt))
+    } catch {
+      // The draft is saved; only its time is not recorded for later sessions.
+    }
+    onSave?.(savedAt)
+    return true
   }
 
   function onVisibilityChange(): void {
@@ -213,7 +242,7 @@ export function startDraftAutosave(readText: () => string): DraftSession {
       claims.set(id, Promise.resolve(id))
       // The previous draft stays saved and becomes available to other tabs.
       releaseLock(previous)
-      return text
+      return { text, savedAt: readSavedAt(id) }
     },
   }
 }

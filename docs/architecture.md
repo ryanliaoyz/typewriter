@@ -46,8 +46,12 @@ canonical text is persisted, verbatim, including whitespace and Unicode; sentenc
 IDs, cached suggestions, failures, and undo history remain session-local
 (invariants 1, 2, and 5).
 
-`startDraftAutosave(readText)` consumes a function that reads the latest canonical
-text and returns a draft session with `stop`, `list`, and `open`. A fixed **180,000 ms** interval saves only
+`startDraftAutosave(readText, onSave)` consumes a function that reads the latest
+canonical text and an optional save callback, and returns a draft session with
+`stop`, `list`, and `open`. Each successful save records its epoch time under
+`typewriter:saved:<tab ID>` and passes it to `onSave`. Skipped and failed writes
+record nothing. `readDraftSavedAt()` returns this tab's recorded time, or null for an
+unsaved draft or one saved before times were recorded. A fixed **180,000 ms** interval saves only
 when text differs from the last restored or successfully saved text. Typing never
 resets the timer. Shortening a draft, whitespace-only changes, and clearing it to
 an empty string all count as changes; unchanged or reverted text needs no write.
@@ -77,7 +81,7 @@ than this tab's, leaving out drafts whose Web Lock another open tab holds (from
 `navigator.locks.query()`). `open(id)` claims that draft's lock, saves this tab's
 current text, makes the chosen ID this tab's draft, and releases the previous one.
 The previous draft stays saved and can be opened again, so drafts of closed tabs
-can be recovered. It returns the chosen text, or null if another tab holds the
+can be recovered. It returns the chosen text and recorded save time, or null if another tab holds the
 draft, it is missing, or the current text could not be saved. Without Web Locks,
 held drafts cannot be detected, so every other draft is listed and opening is not
 exclusive.
@@ -401,7 +405,9 @@ by sentence occurrence. It consumes editor text and optional exact edit ranges, 
 and asynchronous client results, and produces state, `updateText`, `retry`,
 `accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
 9, and 10). It also produces `listDrafts` and `openDraft` from the draft session,
-plus a `draftId` that changes after each opened draft. An opened draft replaces the
+plus a `draftId` that changes after each opened draft and `lastSavedAt`, the time of
+this tab's last successful save: restored on load, updated by each save, and
+replaced by the opened draft's time. An opened draft replaces the
 document with fresh sentence records, clears failures, and feeds the queue like any
 other publication.
 
@@ -439,9 +445,11 @@ controls and state data (invariants 1 and 9).
 history cannot cross drafts.
 
 [`src/AppNav.tsx`](../src/AppNav.tsx) is the navigation bar directly beneath the
-header. It consumes `listDrafts` and `openDraft` and produces a row with **Last
-save**, **Open**, **Model**, and **Latency**. Last save, Model, and Latency show a
-"—" placeholder and are not connected yet. **Open** lists the saved drafts with
+header. It consumes `lastSavedAt`, `listDrafts`, and `openDraft` and produces a row
+with **Last save**, **Open**, **Model**, and **Latency**. Last save shows a `<time>`
+in local time: the time of day for saves today, plus the date for earlier ones,
+or "—" before any recorded save. Model and Latency show a "—" placeholder and are
+not connected yet. **Open** lists the saved drafts with
 their previews, or "No other saved drafts." Choosing one opens it and returns
 focus to **Open**; if another tab took it meanwhile, the list refreshes. Escape and
 clicks outside close the list.
@@ -659,8 +667,9 @@ and the real editor-session hook to cover uninterrupted typing across multiple
 three-minute intervals, unchanged/reverted drafts, partial and complete deletion,
 whitespace-only drafts, same-turn page-hide edits, hide/resume, unavailable/full
 storage and recovery, Strict Mode cleanup, separate per-tab drafts, legacy-draft
-migration, and duplicated-tab forking. [`src/AppNav.test.tsx`](../src/AppNav.test.tsx)
-covers the navigation order and placeholders, opening another draft while keeping
+migration, duplicated-tab forking, and recorded save times. [`src/AppNav.test.tsx`](../src/AppNav.test.tsx)
+covers the navigation order and placeholders, the last-save time before and after
+saving and after opening a draft, its date formatting, opening another draft while keeping
 the previous one saved and listed, the empty list and Escape, and leaving out drafts
 another tab holds. App tests verify verbatim reopening
 in development and production, including Unicode and CR/LF whitespace.

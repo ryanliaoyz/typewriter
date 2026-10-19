@@ -1,6 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { formatSaveTime } from './AppNav'
 import { draftStorageKey } from './document/draft'
 import { fireEvent, readEditor } from './test/editor'
 
@@ -81,5 +82,34 @@ describe('App navigation', () => {
     await clickOpen()
     const drafts = screen.getByRole('group', { name: 'Saved drafts' })
     expect(within(drafts).getAllByRole('button').map((button) => button.textContent)).toEqual(['Free draft.'])
+  })
+
+  it('shows when this tab\'s draft was last saved, including after opening another draft', async () => {
+    vi.setSystemTime(new Date(2026, 9, 19, 14, 30))
+    localStorage.setItem('typewriter:draft:closed', 'Older draft.')
+    localStorage.setItem('typewriter:saved:closed', String(new Date(2026, 9, 17, 8, 5).getTime()))
+    render(<App />)
+    const nav = screen.getByRole('navigation', { name: 'Document' })
+    expect(nav).toHaveTextContent(/^Last save —Open/)
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Saved now.' } })
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    const time = within(nav).getByText(formatSaveTime(Date.now()))
+    expect(time.tagName).toBe('TIME')
+    expect(time).toHaveAttribute('dateTime', new Date(2026, 9, 19, 14, 30).toISOString())
+
+    await clickOpen()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Older draft.' })) })
+    expect(within(nav).getByText(formatSaveTime(new Date(2026, 9, 17, 8, 5).getTime()))).toBeInTheDocument()
+  })
+
+  it('formats today\'s saves as a time and earlier saves with their date', () => {
+    const now = new Date(2026, 9, 19, 14, 30).getTime()
+    const today = new Date(2026, 9, 19, 9, 5).getTime()
+    const earlier = new Date(2026, 9, 18, 23, 55).getTime()
+    expect(formatSaveTime(today, now)).toBe(new Date(today).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))
+    expect(formatSaveTime(earlier, now)).toBe(new Date(earlier).toLocaleString(undefined,
+      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))
+    expect(formatSaveTime(earlier, now)).not.toBe(formatSaveTime(today, now))
   })
 })

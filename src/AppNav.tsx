@@ -2,14 +2,24 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { DraftSummary } from './document/draft'
 
 type Props = {
+  lastSavedAt: number | null
   listDrafts: () => Promise<DraftSummary[]>
   openDraft: (id: string) => Promise<boolean>
 }
 
-// Not wired to live data yet.
-const IDLE = '—'
+// Shown when there is no value yet; Model and Latency are not wired to live data.
+const NONE = '—'
 
-export default function AppNav({ listDrafts, openDraft }: Props) {
+/** Time of day for saves today; earlier saves also name the date. */
+export function formatSaveTime(savedAt: number, now = Date.now()): string {
+  const saved = new Date(savedAt)
+  const sameDay = saved.toDateString() === new Date(now).toDateString()
+  return saved.toLocaleString(undefined, sameDay
+    ? { hour: 'numeric', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+export default function AppNav({ lastSavedAt, listDrafts, openDraft }: Props) {
   const [drafts, setDrafts] = useState<readonly DraftSummary[] | null>(null)
   const container = useRef<HTMLDivElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
@@ -42,7 +52,11 @@ export default function AppNav({ listDrafts, openDraft }: Props) {
 
   return (
     <nav className="app-nav" aria-label="Document">
-      <span className="nav-item">Last save <span className="nav-value">{IDLE}</span></span>
+      <span className="nav-item">Last save <span className="nav-value">
+        {lastSavedAt === null ? NONE : (
+          <time dateTime={new Date(lastSavedAt).toISOString()}>{formatSaveTime(lastSavedAt)}</time>
+        )}
+      </span></span>
       <div className="nav-open" ref={container}
         onKeyDown={(event) => { if (event.key === 'Escape' && open) { event.preventDefault(); close() } }}>
         <button type="button" ref={toggle} aria-expanded={open} aria-controls={menuId}
@@ -61,8 +75,8 @@ export default function AppNav({ listDrafts, openDraft }: Props) {
           </div>
         )}
       </div>
-      <span className="nav-item">Model <span className="nav-value">{IDLE}</span></span>
-      <span className="nav-item">Latency <span className="nav-value">{IDLE}</span></span>
+      <span className="nav-item">Model <span className="nav-value">{NONE}</span></span>
+      <span className="nav-item">Latency <span className="nav-value">{NONE}</span></span>
     </nav>
   )
 }

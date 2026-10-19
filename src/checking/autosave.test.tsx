@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
 import { draftStorageKey } from '../document/draft'
 import { useSentenceEditor } from './useSentenceEditor'
+import { savedDraftText } from '../test/draft'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -18,7 +19,7 @@ afterEach(() => {
 
 /** Count draft-text writes; each save also records its time under another key. */
 function draftWrites(setItem: MockInstance<Storage['setItem']>): number {
-  return setItem.mock.calls.filter(([key]) => key.startsWith('typewriter:draft:')).length
+  return setItem.mock.calls.filter(([key]) => key.startsWith('typewriter:snapshot:')).length
 }
 
 describe('draft autosave', () => {
@@ -35,11 +36,11 @@ describe('draft autosave', () => {
     expect(draftWrites(setItem)).toBe(0)
     act(() => { vi.advanceTimersByTime(1) })
     expect(draftWrites(setItem)).toBe(1)
-    expect(localStorage.getItem(draftStorageKey())).toBe(result.current.state.document.text)
+    expect(savedDraftText(draftStorageKey())).toBe(result.current.state.document.text)
 
     act(() => { vi.advanceTimersByTime(180_000) })
     expect(draftWrites(setItem)).toBe(2)
-    expect(localStorage.getItem(draftStorageKey())).toBe(result.current.state.document.text)
+    expect(savedDraftText(draftStorageKey())).toBe(result.current.state.document.text)
     window.clearInterval(typing)
   })
 
@@ -70,7 +71,7 @@ describe('draft autosave', () => {
     for (const text of ['A draft', ' \r\n\t ', '']) {
       act(() => { result.current.updateText(text) })
       act(() => { vi.advanceTimersByTime(180_000) })
-      expect(localStorage.getItem(draftStorageKey())).toBe(text)
+      expect(savedDraftText(draftStorageKey())).toBe(text)
     }
     unmount()
     const reopened = renderHook(() => useSentenceEditor())
@@ -84,7 +85,7 @@ describe('draft autosave', () => {
     act(() => {
       result.current.updateText(text)
       window.dispatchEvent(new Event('pagehide'))
-      expect(localStorage.getItem(draftStorageKey())).toBe(text)
+      expect(savedDraftText(draftStorageKey())).toBe(text)
     })
   })
 
@@ -102,7 +103,7 @@ describe('draft autosave', () => {
       result.current.updateText('Latest draft')
       visibility.mockReturnValue('hidden')
       document.dispatchEvent(new Event('visibilitychange'))
-      expect(localStorage.getItem(draftStorageKey())).toBe('Latest draft')
+      expect(savedDraftText(draftStorageKey())).toBe('Latest draft')
       window.dispatchEvent(new Event('pagehide'))
     })
     expect(draftWrites(setItem)).toBe(1)
@@ -114,7 +115,7 @@ describe('draft autosave', () => {
     })
     act(() => { vi.advanceTimersByTime(180_000) })
     expect(draftWrites(setItem)).toBe(2)
-    expect(localStorage.getItem(draftStorageKey())).toBe('Resumed draft')
+    expect(savedDraftText(draftStorageKey())).toBe('Resumed draft')
   })
 
   it('keeps editing usable when storage is unavailable and retries after recovery', () => {
@@ -129,7 +130,7 @@ describe('draft autosave', () => {
 
     storage.mockRestore()
     act(() => { vi.advanceTimersByTime(180_000) })
-    expect(localStorage.getItem(draftStorageKey())).toBe('Unsaved draft')
+    expect(savedDraftText(draftStorageKey())).toBe('Unsaved draft')
   })
 
   it('retains pending changes after a failed write, including a subsequent deletion', () => {
@@ -140,13 +141,13 @@ describe('draft autosave', () => {
     const { result } = renderHook(() => useSentenceEditor())
     act(() => { result.current.updateText('Changed draft') })
     act(() => { vi.advanceTimersByTime(180_000) })
-    expect(localStorage.getItem(draftStorageKey())).toBe('Saved draft')
+    expect(savedDraftText(draftStorageKey())).toBe('Saved draft')
 
     act(() => {
       result.current.updateText('')
       window.dispatchEvent(new Event('pagehide'))
     })
-    expect(localStorage.getItem(draftStorageKey())).toBe('')
+    expect(savedDraftText(draftStorageKey())).toBe('')
     act(() => { vi.advanceTimersByTime(180_000) })
     expect(draftWrites(setItem)).toBe(2)
   })
@@ -162,7 +163,7 @@ describe('draft autosave', () => {
     expect(vi.getTimerCount()).toBe(1)
     act(() => { result.current.updateText('Last edit') })
     unmount()
-    expect(localStorage.getItem(draftStorageKey())).toBe('Last edit')
+    expect(savedDraftText(draftStorageKey())).toBe('Last edit')
     expect(draftWrites(setItem)).toBe(1)
     // jsdom dispatches storage events on a zero-delay timer after the final save.
     vi.advanceTimersByTime(0)
@@ -189,8 +190,8 @@ describe('draft autosave', () => {
       first.result.current.updateText('First tab!')
       window.dispatchEvent(new Event('pagehide'))
     })
-    expect(localStorage.getItem(firstKey)).toBe('First tab!')
-    expect(localStorage.getItem(secondKey)).toBe('Second tab, with much more writing')
+    expect(savedDraftText(firstKey)).toBe('First tab!')
+    expect(savedDraftText(secondKey)).toBe('Second tab, with much more writing')
 
     second.unmount()
     const reloaded = renderHook(() => useSentenceEditor())
@@ -225,12 +226,12 @@ describe('draft autosave', () => {
       expect(forkedKey).not.toBe(originalKey)
 
       act(() => { window.dispatchEvent(new Event('pagehide')) })
-      expect(localStorage.getItem(forkedKey)).toBe('Original draft')
+      expect(savedDraftText(forkedKey)).toBe('Original draft')
       act(() => {
         result.current.updateText('Forked edit')
         window.dispatchEvent(new Event('pagehide'))
       })
-      expect(localStorage.getItem(forkedKey)).toBe('Forked edit')
+      expect(savedDraftText(forkedKey)).toBe('Forked edit')
       expect(localStorage.getItem(originalKey)).toBe('Original draft')
     } finally {
       delete (navigator as { locks?: unknown }).locks

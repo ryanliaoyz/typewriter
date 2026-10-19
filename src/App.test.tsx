@@ -5,6 +5,7 @@ import App from './App'
 import * as sentenceDocument from './document/sentences'
 import type { SentenceDocumentState } from './document/sentences'
 import { draftStorageKey } from './document/draft'
+import { savedDraftText } from './test/draft'
 
 beforeEach(() => vi.useFakeTimers())
 
@@ -37,7 +38,7 @@ describe('App', () => {
     const first = render(<App />)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
     act(() => { window.dispatchEvent(new Event('pagehide')) })
-    expect(localStorage.getItem(draftStorageKey())).toBe(text)
+    expect(savedDraftText(draftStorageKey())).toBe(text)
     first.unmount()
 
     render(<App />)

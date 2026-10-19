@@ -29,6 +29,7 @@
 - [x] Show the time of the current draft's last successful save in the navigation bar.
 - [x] Move navigation beside the title, refine its styling, and display the configured model read-only.
 - [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
+- [x] Preserve per-occurrence rejected suggestions across reloads and reopening saved drafts.
 
 ## Later
 

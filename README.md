@@ -19,7 +19,8 @@ meaning, with user-controlled acceptance or rejection.
   before appearing as highlights directly in the editor. Click a highlight or press
   **Alt+Enter** with the caret in it to compare and accept/reject in a nearby card;
   **Escape** closes it. Accept replaces only that sentence as an undoable edit;
-  reject suppresses that version until edited. Both work in development and production.
+  reject suppresses that occurrence until edited, including after reload or reopening
+  its saved draft. Both work in development and production.
   Failed checks have amber wavy underlines; click or press **Alt+Enter** to see
   the error and **Retry** in development or production. Raw response diagnostics
   remain available through **Show response** in development **Debug state**.

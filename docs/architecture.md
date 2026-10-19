@@ -38,23 +38,33 @@ reconciliation instead of inferring a range from snapshots.
 
 [`src/document/draft.ts`](../src/document/draft.ts) owns one browser-local draft
 per tab. Each tab is its own session: a random tab ID kept in sessionStorage
-(`typewriter:tab`) survives reloads of that tab, and `draftStorageKey()` names its
-localStorage key, `typewriter:draft:<tab ID>`. `readDraft()` returns that tab's
-saved text, or an empty string for a new tab or when no draft is available. The editor session reads it before
-creating its initial state, then rebuilds sentence records and checking work. Only
-canonical text is persisted, verbatim, including whitespace and Unicode; sentence
-IDs, cached suggestions, failures, and undo history remain session-local
-(invariants 1, 2, and 5).
+(`typewriter:tab`) survives reloads of that tab. New saves use the localStorage key
+`typewriter:snapshot:<tab ID>`: one atomic, schema-versioned JSON write containing
+canonical text verbatim (including whitespace and Unicode) and current rejected
+occurrences' UTF-16 ranges and text. `readDraft()` returns `{ text, rejected }`,
+defaulting to empty text and markers when no draft is available. The editor session
+rebuilds sentence records and restores only markers matching their exact ranges and
+text before scheduling checks. Sentence IDs, cached suggestions, failures, and undo
+history remain session-local (invariants 1, 2, 5, and 9).
 
-`startDraftAutosave(readText, onSave)` consumes a function that reads the latest
-canonical text and an optional save callback, and returns a draft session with
+Existing text-only `typewriter:draft:<tab ID>` keys (named by `draftStorageKey()`)
+remain readable, with no rejection markers. A valid new snapshot takes precedence;
+subsequent changes save in the new format. Distinct keys ensure JSON-looking legacy
+prose is never interpreted as metadata. Malformed markers are ignored; unreadable
+snapshots fall back to legacy text when available. The Open list combines both
+formats without listing a draft twice.
+
+`startDraftAutosave(readDraftState, onSave)` consumes a function that reads the latest
+`{ text, rejected }` snapshot and an optional save callback, and returns a draft session with
 `stop`, `list`, and `open`. Each successful save records its epoch time under
 `typewriter:saved:<tab ID>` and passes it to `onSave`. Skipped and failed writes
 record nothing. `readDraftSavedAt()` returns this tab's recorded time, or null for an
 unsaved draft or one saved before times were recorded. A fixed **180,000 ms** interval saves only
-when text differs from the last restored or successfully saved text. Typing never
+when text or rejection markers differ from the last restored or successfully saved
+snapshot. Rejection-only changes are saved even without typing. Typing never
 resets the timer. Shortening a draft, whitespace-only changes, and clearing it to
-an empty string all count as changes; unchanged or reverted text needs no write.
+an empty string all count as changes; an unchanged snapshot needs no write. Editing
+and reverting a rejected sentence still saves the removal of its rejection.
 Saving is independent of sentence completion and model requests (invariants 1, 8,
 and 9).
 
@@ -74,15 +84,15 @@ ID already held forks to a new ID, keeping its copied text and saving it under t
 new key at the next flush. Without Web Locks, the claim is assumed. If
 sessionStorage is unavailable, the ID lasts only for the page load. The first new
 tab adopts a draft saved under the old single `typewriter:draft` key and removes
-it.
+it. Duplicated tabs carry their restored rejection markers into the forked snapshot.
 
 `list()` returns a short single-line preview of each saved, non-blank draft other
 than this tab's, leaving out drafts whose Web Lock another open tab holds (from
 `navigator.locks.query()`). `open(id)` claims that draft's lock, saves this tab's
-current text, makes the chosen ID this tab's draft, and releases the previous one.
+current snapshot, makes the chosen ID this tab's draft, and releases the previous one.
 The previous draft stays saved and can be opened again, so drafts of closed tabs
-can be recovered. It returns the chosen text and recorded save time, or null if another tab holds the
-draft, it is missing, or the current text could not be saved. Without Web Locks,
+can be recovered. It returns the chosen text, rejection markers, and recorded save time, or null if another tab holds the
+draft, it is missing, or the current snapshot could not be saved. Without Web Locks,
 held drafts cannot be detected, so every other draft is listed and opening is not
 exclusive.
 
@@ -212,7 +222,12 @@ use the normal queue rather than being assumed clean.
 Reject removes the suggestion and marks that occurrence/version `rejected`, not
 model-verified `clean`. It changes no document text or version. Reconciliation
 retains rejection through offset/whitespace-only changes; content edits reset the
-record to `idle`. The queue schedules only `idle` records, so rejected versions
+record to `idle`. `rejectedOccurrences(state)` derives persistence markers from
+current rejected records, not a text-keyed history. `restoreSentenceDocument(text,
+rejected, firstId)` rebuilds segmentation, applies only exact occurrence matches,
+and allocates fresh IDs when opening a draft. Rejections survive reload/Open, but
+content edits, deletion, splits, and merges do not resurrect old dismissals.
+The queue schedules only `idle` records, so rejected versions
 do not get rechecked automatically (invariants 5–6 and 9).
 
 ## Debounced sequential queue
@@ -408,8 +423,10 @@ and asynchronous client results, and produces state, `updateText`, `retry`,
 plus a `draftId` that changes after each opened draft and `lastSavedAt`, the time of
 this tab's last successful save: restored on load, updated by each save, and
 replaced by the opened draft's time. An opened draft replaces the
-document with fresh sentence records, clears failures, and feeds the queue like any
-other publication.
+document with fresh sentence IDs and validated rejection markers, clears failures,
+and feeds the queue like any other publication. IDs advance from the previous
+document's allocation counter, preventing late results or errors from a previous
+draft from matching a reopened occurrence with identical text/version.
 
 The session resolves model configuration once and exposes its `model` tag to the
 header. The displayed tag and the HTTP checker use the same configuration snapshot;
@@ -680,6 +697,15 @@ saving and after opening a draft, its date formatting, opening another draft whi
 the previous one saved and listed, the empty list and Escape, and leaving out drafts
 another tab holds. App tests verify verbatim reopening
 in development and production, including Unicode and CR/LF whitespace.
+
+[`src/checking/rejection-persistence.test.tsx`](../src/checking/rejection-persistence.test.tsx)
+uses mocked HTTP and fake timers to cover rejection-only interval and page-hide
+saves, immediate reload, independent duplicates, Strict Mode, offset/whitespace
+changes, content edits and reversions, deletion/splits/merges, failed-write recovery,
+draft reopening during inference, duplicated-tab forking, legacy JSON-looking prose,
+and malformed markers. [`src/test/draft.ts`](../src/test/draft.ts) reads saved text
+from either storage format for test assertions; it does not interpret legacy prose
+as JSON or participate in application state (invariants 1 and 9).
 
 Additional editor-to-queue regressions in
 [`src/checking/integration.test.tsx`](../src/checking/integration.test.tsx) use exact

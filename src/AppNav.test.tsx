@@ -5,6 +5,7 @@ import { formatSaveTime } from './AppNav'
 import { DEFAULT_MODEL } from './checking/config'
 import { draftStorageKey } from './document/draft'
 import { fireEvent, readEditor } from './test/editor'
+import { savedDraftText } from './test/draft'
 
 beforeEach(() => vi.useFakeTimers())
 
@@ -73,12 +74,12 @@ describe('App navigation', () => {
     expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus()
     expect(editorText()).toBe('\n  Closed tab   draft.\nSecond line')
     expect(draftStorageKey()).toBe('typewriter:draft:closed')
-    expect(localStorage.getItem(currentKey)).toBe('Current draft.')
+    expect(savedDraftText(currentKey)).toBe('Current draft.')
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Edited closed draft.' } })
     act(() => { window.dispatchEvent(new Event('pagehide')) })
-    expect(localStorage.getItem('typewriter:draft:closed')).toBe('Edited closed draft.')
-    expect(localStorage.getItem(currentKey)).toBe('Current draft.')
+    expect(savedDraftText('typewriter:draft:closed')).toBe('Edited closed draft.')
+    expect(savedDraftText(currentKey)).toBe('Current draft.')
 
     await clickOpen()
     expect(screen.getByRole('button', { name: 'Current draft.' })).toBeInTheDocument()

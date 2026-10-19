@@ -1,5 +1,8 @@
+import type { RejectedOccurrence } from './sentences'
+
 const LEGACY_DRAFT_KEY = 'typewriter:draft'
 const DRAFT_KEY_PREFIX = 'typewriter:draft:'
+const SNAPSHOT_KEY_PREFIX = 'typewriter:snapshot:'
 const SAVED_AT_PREFIX = 'typewriter:saved:'
 const TAB_ID_KEY = 'typewriter:tab'
 const LOCK_PREFIX = 'typewriter:tab:'
@@ -7,8 +10,9 @@ const AUTOSAVE_INTERVAL_MS = 3 * 60 * 1000
 const PREVIEW_LENGTH = 60
 
 export type DraftSummary = { readonly id: string, readonly preview: string }
+export type DraftSnapshot = { readonly text: string, readonly rejected: readonly RejectedOccurrence[] }
 /** `savedAt` is the epoch time of the draft's last successful save, if recorded. */
-export type OpenedDraft = { readonly text: string, readonly savedAt: number | null }
+export type OpenedDraft = DraftSnapshot & { readonly savedAt: number | null }
 
 /** One tab's autosave lifecycle; `open` switches the tab to another saved draft. */
 export type DraftSession = {
@@ -54,7 +58,7 @@ function currentTabId(): string {
   return readTabId() ?? assignTabId()
 }
 
-/** Each tab is its own session: sessionStorage keeps its ID across reloads only. */
+/** Legacy text-only key, still readable; new saves use typewriter:snapshot:<ID>. */
 export function draftStorageKey(): string {
   return draftKey(currentTabId())
 }
@@ -132,8 +136,32 @@ function previewOf(text: string): string {
   return line.length > PREVIEW_LENGTH ? `${line.slice(0, PREVIEW_LENGTH - 1)}…` : line
 }
 
-/** Restore this tab's canonical text; sentence records are rebuilt for this session. */
-export function readDraft(): string {
+function readSnapshot(tabId: string): DraftSnapshot | null {
+  const storage = window.localStorage
+  const serialized = storage.getItem(`${SNAPSHOT_KEY_PREFIX}${tabId}`)
+  if (serialized !== null) {
+    try {
+      const value = JSON.parse(serialized) as { schema?: unknown, text?: unknown, rejected?: unknown }
+      if (value?.schema === 1 && typeof value.text === 'string') {
+        const text = value.text
+        const rejected = Array.isArray(value.rejected) ? value.rejected.filter(
+          (marker): marker is RejectedOccurrence => typeof marker === 'object' && marker !== null &&
+            Number.isInteger(marker.start) && marker.start >= 0 && Number.isInteger(marker.end) &&
+            marker.end > marker.start && typeof marker.text === 'string' &&
+            text.slice(marker.start, marker.end) === marker.text,
+        ) : []
+        return { text, rejected }
+      }
+    } catch {
+      // A damaged snapshot may still have a legacy text draft to recover.
+    }
+  }
+  const text = storage.getItem(draftKey(tabId))
+  return text === null ? null : { text, rejected: [] }
+}
+
+/** Restore text and validated rejection markers, including old text-only drafts. */
+export function readDraft(): DraftSnapshot {
   const newTab = readTabId() === null
   const key = draftStorageKey()
   try {
@@ -143,33 +171,34 @@ export function readDraft(): string {
     if (legacy !== null) {
       storage.setItem(key, legacy)
       storage.removeItem(LEGACY_DRAFT_KEY)
-      return legacy
+      return { text: legacy, rejected: [] }
     }
-    return storage.getItem(key) ?? ''
+    return readSnapshot(currentTabId()) ?? { text: '', rejected: [] }
   } catch {
     // Unavailable browser storage must not prevent editing.
-    return ''
+    return { text: '', rejected: [] }
   }
 }
 
-/** Read the latest canonical text at each save, independently of typing cadence. */
-export function startDraftAutosave(readText: () => string, onSave?: (savedAt: number) => void): DraftSession {
+/** Read current text and rejections at each save, independently of typing cadence. */
+export function startDraftAutosave(readDraftState: () => DraftSnapshot, onSave?: (savedAt: number) => void): DraftSession {
   let tabId = currentTabId()
   let savedId = tabId
-  let savedText = readText()
+  const serialize = (snapshot: DraftSnapshot) => JSON.stringify({ schema: 1, ...snapshot })
+  let savedSnapshot = serialize(readDraftState())
   let stopped = false
   void claimTabId(tabId).then((claimed) => { tabId = claimed })
 
   /** True when nothing is left unsaved. */
   function flush(): boolean {
-    const text = readText()
+    const snapshot = serialize(readDraftState())
     // A forked tab saves its copied text under its new key even without edits.
-    if (tabId === savedId && text === savedText) return true
+    if (tabId === savedId && snapshot === savedSnapshot) return true
     try {
       // Empty text is a saved deletion, not a missing draft.
-      window.localStorage.setItem(draftKey(tabId), text)
+      window.localStorage.setItem(`${SNAPSHOT_KEY_PREFIX}${tabId}`, snapshot)
       savedId = tabId
-      savedText = text
+      savedSnapshot = snapshot
     } catch {
       // Leave changes pending so the next interval or page hide can retry.
       return false
@@ -207,11 +236,14 @@ export function startDraftAutosave(readText: () => string, onSave?: (savedAt: nu
       const drafts: DraftSummary[] = []
       try {
         const storage = window.localStorage
+        const ids = new Set<string>()
         for (let index = 0; index < storage.length; index++) {
           const key = storage.key(index)
-          if (!key?.startsWith(DRAFT_KEY_PREFIX)) continue
-          const id = key.slice(DRAFT_KEY_PREFIX.length)
-          const text = storage.getItem(key)
+          const prefix = [DRAFT_KEY_PREFIX, SNAPSHOT_KEY_PREFIX].find((prefix) => key?.startsWith(prefix))
+          if (key && prefix) ids.add(key.slice(prefix.length))
+        }
+        for (const id of ids) {
+          const text = readSnapshot(id)?.text
           if (id === tabId || held.has(id) || !text?.trim()) continue
           drafts.push({ id, preview: previewOf(text) })
         }
@@ -224,25 +256,25 @@ export function startDraftAutosave(readText: () => string, onSave?: (savedAt: nu
     /** Save this draft, then make `id` this tab's draft; null if it is unavailable. */
     async open(id) {
       if (stopped || id === tabId || !(await tryLock(id))) return null
-      let text: string | null = null
+      let snapshot: DraftSnapshot | null = null
       try {
-        text = window.localStorage.getItem(draftKey(id))
+        snapshot = readSnapshot(id)
       } catch {
         // Treated as unavailable below.
       }
       // Never switch away from changes that could not be saved.
-      if (stopped || text === null || !flush()) {
+      if (stopped || snapshot === null || !flush()) {
         releaseLock(id)
         return null
       }
       const previous = tabId
       writeTabId(id)
       tabId = savedId = id
-      savedText = text
+      savedSnapshot = serialize(snapshot)
       claims.set(id, Promise.resolve(id))
       // The previous draft stays saved and becomes available to other tabs.
       releaseLock(previous)
-      return { text, savedAt: readSavedAt(id) }
+      return { ...snapshot, savedAt: readSavedAt(id) }
     },
   }
 }

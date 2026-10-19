@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { readDraft, readDraftSavedAt, startDraftAutosave } from '../document/draft'
 import type { DraftSession, DraftSummary } from '../document/draft'
-import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
+import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, rejectedOccurrences, restoreSentenceDocument, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
 import { createOllamaChecker, UnusableResponseError } from './ollama'
@@ -22,7 +22,10 @@ export function useSentenceEditor() {
     VITE_OLLAMA_MODEL: import.meta.env.VITE_OLLAMA_MODEL,
     VITE_OLLAMA_SERVER_URL: import.meta.env.VITE_OLLAMA_SERVER_URL,
   }, import.meta.env.DEV))
-  const [state, setState] = useState(() => createSentenceDocument(readDraft()))
+  const [state, setState] = useState(() => {
+    const snapshot = readDraft()
+    return restoreSentenceDocument(snapshot.text, snapshot.rejected)
+  })
   const [failures, setFailures] = useState<readonly Failure[]>([])
   const currentFailures = useRef<readonly Failure[]>([])
   const current = useRef(state)
@@ -33,7 +36,9 @@ export function useSentenceEditor() {
   const [lastSavedAt, setLastSavedAt] = useState(readDraftSavedAt)
 
   useEffect(() => {
-    const session = startDraftAutosave(() => current.current.document.text, setLastSavedAt)
+    const session = startDraftAutosave(() => ({
+      text: current.current.document.text, rejected: rejectedOccurrences(current.current),
+    }), setLastSavedAt)
     draft.current = session
     return () => {
       session.stop()
@@ -117,11 +122,11 @@ export function useSentenceEditor() {
     return await draft.current?.list() ?? []
   }
 
-  /** Switch this tab to another saved draft; its sentences start a fresh session. */
+  /** Restore another draft's rejections with fresh IDs to exclude previous work. */
   async function openDraft(id: string): Promise<boolean> {
     const opened = await draft.current?.open(id)
     if (!opened) return false
-    publish(createSentenceDocument(opened.text))
+    publish(restoreSentenceDocument(opened.text, opened.rejected, current.current.nextSentenceId))
     setLastSavedAt(opened.savedAt)
     publishFailures([])
     setDraftId(id)

@@ -59,6 +59,28 @@ function createRecord(segment: SentenceSegment, id: number): SentenceRecord {
   return { ...segment, id: `sentence-${id}`, version: 1, status: 'idle' }
 }
 
+/** Persist only current rejected occurrences, never cached model output or IDs. */
+export type RejectedOccurrence = Pick<SentenceRecord, 'start' | 'end' | 'text'>
+
+export function rejectedOccurrences(state: SentenceDocumentState): readonly RejectedOccurrence[] {
+  return state.sentences.filter((record) => record.status === 'rejected')
+    .map(({ start, end, text }) => ({ start, end, text }))
+}
+
+/** Restore only markers matching native segmentation; draft switches use fresh IDs. */
+export function restoreSentenceDocument(text: string, rejected: readonly RejectedOccurrence[], firstId = 1): SentenceDocumentState {
+  const segments = segmentSentences(text)
+  return {
+    document: createDocument(text),
+    nextSentenceId: firstId + segments.length,
+    sentences: segments.map((segment, index) => ({
+      ...segment, id: `sentence-${firstId + index}`, version: 1,
+      status: rejected.some((marker) => marker.start === segment.start && marker.end === segment.end && marker.text === segment.text)
+        ? 'rejected' : 'idle',
+    })),
+  }
+}
+
 function moveRecord(record: SentenceRecord, segment: SentenceSegment): SentenceRecord {
   return record.start === segment.start ? record : { ...record, ...segment }
 }

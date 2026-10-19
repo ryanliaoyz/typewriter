@@ -3,7 +3,9 @@ import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach } from 'vitest'
 
 beforeEach(() => {
-  if (typeof window !== 'undefined') window.localStorage.clear()
+  if (typeof window === 'undefined') return
+  window.localStorage.clear()
+  window.sessionStorage.clear()
 })
 
 afterEach(cleanup)

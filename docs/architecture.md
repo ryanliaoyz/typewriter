@@ -37,8 +37,10 @@ reconciliation instead of inferring a range from snapshots.
 ## Local draft persistence
 
 [`src/document/draft.ts`](../src/document/draft.ts) owns one browser-local draft
-under the `typewriter:draft` localStorage key. `readDraft()` returns the saved text
-or an empty string when no draft is available. The editor session reads it before
+per tab. Each tab is its own session: a random tab ID kept in sessionStorage
+(`typewriter:tab`) survives reloads of that tab, and `draftStorageKey()` names its
+localStorage key, `typewriter:draft:<tab ID>`. `readDraft()` returns that tab's
+saved text, or an empty string for a new tab or when no draft is available. The editor session reads it before
 creating its initial state, then rebuilds sentence records and checking work. Only
 canonical text is persisted, verbatim, including whitespace and Unicode; sentence
 IDs, cached suggestions, failures, and undo history remain session-local
@@ -60,9 +62,15 @@ followed by page hide is saved before React renders it. Becoming visible again
 continues the existing interval. Storage exceptions do not interrupt editing;
 failed writes stay pending for the next interval or lifecycle flush.
 
-The draft belongs to the current browser profile and page origin (including its
-port). Each origin has one draft; multiple tabs use the last successful write,
-without live synchronization or conflict resolution.
+Drafts belong to the current browser profile and page origin (including its
+port). Tabs never write each other's keys, so a stale tab cannot overwrite another
+tab's work. A duplicated tab inherits a copy of sessionStorage; each autosave
+session claims its tab ID with a page-lifetime Web Lock, and a page that finds the
+ID already held forks to a new ID, keeping its copied text and saving it under the
+new key at the next flush. Without Web Locks, the claim is assumed. If
+sessionStorage is unavailable, the ID lasts only for the page load. The first new
+tab adopts a draft saved under the old single `typewriter:draft` key and removes
+it. Drafts of closed tabs remain stored but are not offered to new tabs.
 
 ## Sentence segmentation
 
@@ -410,7 +418,7 @@ before publishing React state so closely spaced callbacks preserve every failure
 
 [`src/App.tsx`](../src/App.tsx) connects `useSentenceEditor` state and actions to
 the single CodeMirror writing surface described below, beneath a compact wordmark
-header with a decorative, screen-reader-hidden accent. Drafts persist in the current
+header with a decorative, screen-reader-hidden accent. Drafts persist per tab in the current
 browser profile and origin through the local draft module. The editor has an accessible
 name without a visible label or instructional copy. The inspector retains its
 controls and state data (invariants 1 and 9).
@@ -627,7 +635,8 @@ active inference without concurrent requests.
 and the real editor-session hook to cover uninterrupted typing across multiple
 three-minute intervals, unchanged/reverted drafts, partial and complete deletion,
 whitespace-only drafts, same-turn page-hide edits, hide/resume, unavailable/full
-storage and recovery, and Strict Mode cleanup. App tests verify verbatim reopening
+storage and recovery, Strict Mode cleanup, separate per-tab drafts, legacy-draft
+migration, and duplicated-tab forking. App tests verify verbatim reopening
 in development and production, including Unicode and CR/LF whitespace.
 
 Additional editor-to-queue regressions in

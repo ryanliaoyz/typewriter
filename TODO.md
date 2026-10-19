@@ -24,6 +24,7 @@
 - [x] Evaluate newly installed models on editing-v1 against a same-suite baseline and document results.
 - [x] Show failed checks with an amber wavy underline and a version-safe inline Retry card in development and production.
 - [x] Add three-minute local draft autosave during continuous typing, restore on reopen, save deletions, and flush on page hide/reload.
+- [x] Keep each tab's draft separate so tabs never overwrite each other.
 - [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
 
 ## Later

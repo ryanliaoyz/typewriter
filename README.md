@@ -8,7 +8,8 @@ meaning, with user-controlled acceptance or rejection.
 
 - Write or paste plain text into a CodeMirror editor. Canonical text and whitespace
   are preserved. Changed drafts autosave locally every three minutes, even while
-  typing, and on page hide/reload. Reopening restores the draft, including deletions.
+  typing, and on page hide/reload. Each tab keeps a separate draft; reloading a tab
+  restores its draft, including deletions.
 - Sentences are segmented with `Intl.Segmenter` and tracked by occurrence ID and
   version. Edits reconcile their ranges and invalidate changed results; a
   development-only **Debug state** inspector exposes the live state.

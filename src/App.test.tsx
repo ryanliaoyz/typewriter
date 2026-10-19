@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as sentenceDocument from './document/sentences'
 import type { SentenceDocumentState } from './document/sentences'
-import { DRAFT_STORAGE_KEY } from './document/draft'
+import { draftStorageKey } from './document/draft'
 
 beforeEach(() => vi.useFakeTimers())
 
@@ -37,7 +37,7 @@ describe('App', () => {
     const first = render(<App />)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
     act(() => { window.dispatchEvent(new Event('pagehide')) })
-    expect(localStorage.getItem(DRAFT_STORAGE_KEY)).toBe(text)
+    expect(localStorage.getItem(draftStorageKey())).toBe(text)
     first.unmount()
 
     render(<App />)

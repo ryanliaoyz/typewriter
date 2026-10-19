@@ -27,6 +27,7 @@
 - [x] Keep each tab's draft separate so tabs never overwrite each other.
 - [x] Add a navigation bar under the header with last save, model, and latency placeholders and an **Open** list for retrieving saved drafts.
 - [x] Show the time of the current draft's last successful save in the navigation bar.
+- [x] Move navigation beside the title, refine its styling, and display the configured model read-only.
 - [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
 
 ## Later

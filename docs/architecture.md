@@ -411,6 +411,10 @@ replaced by the opened draft's time. An opened draft replaces the
 document with fresh sentence records, clears failures, and feeds the queue like any
 other publication.
 
+The session resolves model configuration once and exposes its `model` tag to the
+header. The displayed tag and the HTTP checker use the same configuration snapshot;
+displaying it does not add model switching or change request behavior (invariant 8).
+
 Every edit reconciles state and immediately feeds it to the queue. A current-state
 reference is updated before publishing React state, so a model response always
 checks the latest document, including when React batches renders. Successful
@@ -444,12 +448,13 @@ controls and state data (invariants 1 and 9).
 `App` keys the editor by `draftId`, so an opened draft gets a fresh editor and undo
 history cannot cross drafts.
 
-[`src/AppNav.tsx`](../src/AppNav.tsx) is the navigation bar directly beneath the
-header. It consumes `lastSavedAt`, `listDrafts`, and `openDraft` and produces a row
+[`src/AppNav.tsx`](../src/AppNav.tsx) is the navigation beside the title within the
+header, wrapping below it on narrow screens. It consumes `lastSavedAt`, `model`,
+`listDrafts`, and `openDraft` and produces a row
 with **Last save**, **Open**, **Model**, and **Latency**. Last save shows a `<time>`
 in local time: the time of day for saves today, plus the date for earlier ones,
-or "—" before any recorded save. Model and Latency show a "—" placeholder and are
-not connected yet. **Open** lists the saved drafts with
+or "—" before any recorded save. Model shows the configured inference tag as
+read-only text; Latency remains a "—" placeholder. **Open** lists the saved drafts with
 their previews, or "No other saved drafts." Choosing one opens it and returns
 focus to **Open**; if another tab took it meanwhile, the list refreshes. Escape and
 clicks outside close the list.
@@ -668,7 +673,9 @@ three-minute intervals, unchanged/reverted drafts, partial and complete deletion
 whitespace-only drafts, same-turn page-hide edits, hide/resume, unavailable/full
 storage and recovery, Strict Mode cleanup, separate per-tab drafts, legacy-draft
 migration, duplicated-tab forking, and recorded save times. [`src/AppNav.test.tsx`](../src/AppNav.test.tsx)
-covers the navigation order and placeholders, the last-save time before and after
+covers the shared title/header structure, navigation order, read-only configured
+model matching the inference request in development and production, the latency
+placeholder, the last-save time before and after
 saving and after opening a draft, its date formatting, opening another draft while keeping
 the previous one saved and listed, the empty list and Escape, and leaving out drafts
 another tab holds. App tests verify verbatim reopening

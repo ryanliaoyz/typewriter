@@ -18,6 +18,10 @@ function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolea
 
 /** Own one document session and queue; publish transitions before more work runs. */
 export function useSentenceEditor() {
+  const [config] = useState(() => readModelConfig({
+    VITE_OLLAMA_MODEL: import.meta.env.VITE_OLLAMA_MODEL,
+    VITE_OLLAMA_SERVER_URL: import.meta.env.VITE_OLLAMA_SERVER_URL,
+  }, import.meta.env.DEV))
   const [state, setState] = useState(() => createSentenceDocument(readDraft()))
   const [failures, setFailures] = useState<readonly Failure[]>([])
   const currentFailures = useRef<readonly Failure[]>([])
@@ -44,10 +48,6 @@ export function useSentenceEditor() {
 
   useEffect(() => {
     const controller = new AbortController()
-    const config = readModelConfig({
-      VITE_OLLAMA_MODEL: import.meta.env.VITE_OLLAMA_MODEL,
-      VITE_OLLAMA_SERVER_URL: import.meta.env.VITE_OLLAMA_SERVER_URL,
-    }, import.meta.env.DEV)
     const sessionQueue = createSentenceQueue({
       check: createOllamaChecker({ model: config.model, serverUrl: config.requestUrl, signal: controller.signal }),
       onResult: (sentence, result) => {
@@ -78,7 +78,7 @@ export function useSentenceEditor() {
       controller.abort()
       queue.current = null
     }
-  }, [])
+  }, [config])
 
   function updateText(text: string, edit?: DocumentEdit): void {
     publish(updateSentenceDocument(current.current, text, edit))
@@ -128,5 +128,5 @@ export function useSentenceEditor() {
     return true
   }
 
-  return { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft }
+  return { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft, model: config.model }
 }

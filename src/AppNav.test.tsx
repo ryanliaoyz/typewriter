@@ -2,6 +2,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { formatSaveTime } from './AppNav'
+import { DEFAULT_MODEL } from './checking/config'
 import { draftStorageKey } from './document/draft'
 import { fireEvent, readEditor } from './test/editor'
 
@@ -10,6 +11,8 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   delete (navigator as { locks?: unknown }).locks
 })
 
@@ -22,14 +25,36 @@ function editorText(): string {
 }
 
 describe('App navigation', () => {
-  it('follows the header with last save, open, model, and latency', () => {
+  it('shares the title header with last save, open, the configured model, and latency', () => {
+    vi.stubEnv('VITE_OLLAMA_MODEL', '')
     render(<App />)
     const nav = screen.getByRole('navigation', { name: 'Document' })
     const heading = screen.getByRole('heading', { name: 'Typewriter', level: 1 })
 
     expect(heading.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(nav).toHaveTextContent(/^Last save —Open\s*Model —Latency —$/)
+    expect(nav.parentElement).toBe(heading.parentElement)
+    expect(nav.parentElement?.tagName).toBe('HEADER')
+    expect(nav).toHaveTextContent(`Last save —OpenModel ${DEFAULT_MODEL}Latency —`)
     expect(within(nav).getByRole('button', { name: 'Open' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it.each([true, false])('displays the same read-only model used for inference (development: %s)', async (development) => {
+    vi.stubEnv('DEV', development)
+    vi.stubEnv('VITE_OLLAMA_MODEL', '  gemma4:e4b  ')
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: 'A sentence.' }, finish_reason: 'stop' }],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    render(<App />)
+
+    const nav = screen.getByRole('navigation', { name: 'Document' })
+    expect(within(nav).getByText('gemma4:e4b').tagName).toBe('SPAN')
+    expect(within(nav).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(nav).getAllByRole('button')).toHaveLength(1)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'A sentence.' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toMatchObject({ model: 'gemma4:e4b' })
   })
 
   it('opens another saved draft and keeps the current draft available', async () => {

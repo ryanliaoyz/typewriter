@@ -3,11 +3,12 @@ import type { DraftSummary } from './document/draft'
 
 type Props = {
   lastSavedAt: number | null
+  model: string
   listDrafts: () => Promise<DraftSummary[]>
   openDraft: (id: string) => Promise<boolean>
 }
 
-// Shown when there is no value yet; Model and Latency are not wired to live data.
+// Shown when there is no value yet; Latency is not wired to live data.
 const NONE = '—'
 
 /** Time of day for saves today; earlier saves also name the date. */
@@ -19,7 +20,7 @@ export function formatSaveTime(savedAt: number, now = Date.now()): string {
     : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-export default function AppNav({ lastSavedAt, listDrafts, openDraft }: Props) {
+export default function AppNav({ lastSavedAt, model, listDrafts, openDraft }: Props) {
   const [drafts, setDrafts] = useState<readonly DraftSummary[] | null>(null)
   const container = useRef<HTMLDivElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
@@ -75,7 +76,7 @@ export default function AppNav({ lastSavedAt, listDrafts, openDraft }: Props) {
           </div>
         )}
       </div>
-      <span className="nav-item">Model <span className="nav-value">{NONE}</span></span>
+      <span className="nav-item nav-model">Model <span className="nav-value">{model}</span></span>
       <span className="nav-item">Latency <span className="nav-value">{NONE}</span></span>
     </nav>
   )

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { undo, redo } from '@codemirror/commands'
 import { useState } from 'react'
 import SentenceEditor from './SentenceEditor'
-import { acceptSentenceSuggestion, cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from './document/sentences'
+import { acceptSentenceSuggestion, cacheSentenceResult, createSentenceDocument, markSentenceFailed, updateSentenceDocument } from './document/sentences'
+import type { SentenceDocumentState } from './document/sentences'
 import { editorView, failureHighlights, fireEvent, highlights, readEditor } from './test/editor'
 
 function suggested(text = 'They works. They works.') {
@@ -13,16 +14,21 @@ function suggested(text = 'They works. They works.') {
   }
   return state
 }
+/** Mark every complete record failed, as the editor session does after a failed check. */
+function failAll(state: SentenceDocumentState) {
+  return state.sentences.reduce(markSentenceFailed, state)
+}
 const actions = { updateText: () => {}, accept: () => false, reject: () => false, failures: [], retry: () => true }
 
 describe('SentenceEditor', () => {
-  it('shows only current unchecked failures alongside suggestions and renders error text literally', () => {
+  it('shows failure details only for failed records alongside suggestions and renders error text literally', () => {
     let state = createSentenceDocument('Same. Same. Third. Fourth.')
     const failures = state.sentences.map(({ id, version, text }) => ({
       sentence: { id, version, text }, message: '<b>Server offline</b>',
     }))
     state = cacheSentenceResult(state, state.sentences[1], { status: 'suggestion', suggestion: 'Suggested.' })
-    failures[2].sentence.text = 'Old text.'
+    // Sentence 3 is unchecked despite having details; sentence 4's details are for an old version.
+    state = markSentenceFailed(markSentenceFailed(state, state.sentences[0]), state.sentences[3])
     failures[3].sentence.version += 1
     failures.push({ sentence: { id: 'deleted', version: 1, text: 'Same.' }, message: 'Deleted failure' })
     render(<SentenceEditor state={state} {...actions} failures={failures} />)
@@ -41,7 +47,7 @@ describe('SentenceEditor', () => {
   })
 
   it('opens duplicate failures independently by keyboard and retries the selected capture', () => {
-    const state = createSentenceDocument('Same. Same.')
+    const state = failAll(createSentenceDocument('Same. Same.'))
     const failures = state.sentences.map(({ id, version, text }, index) => ({
       sentence: { id, version, text }, message: `Failure ${index + 1}`,
     }))
@@ -67,7 +73,7 @@ describe('SentenceEditor', () => {
   })
 
   it('keeps the failure card open when a retry is refused', () => {
-    const state = createSentenceDocument('Failed.')
+    const state = failAll(createSentenceDocument('Failed.'))
     const failures = [{ sentence: state.sentences[0], message: 'Offline.' }]
     const retry = vi.fn(() => false)
     render(<SentenceEditor state={state} {...actions} failures={failures} retry={retry} />)
@@ -78,7 +84,7 @@ describe('SentenceEditor', () => {
   })
 
   it('keeps Retry focused through unrelated failures and offset shifts', () => {
-    const state = createSentenceDocument('Same. Same.')
+    const state = failAll(createSentenceDocument('Same. Same.'))
     const failures = state.sentences.map(({ id, version, text }) => ({
       sentence: { id, version, text }, message: 'Offline',
     }))
@@ -99,7 +105,8 @@ describe('SentenceEditor', () => {
 
   it.each(['They work. Last.', 'Last.', 'They. Works. Last.', 'They works Last.'])(
     'removes a stale failure card after editing to %s and does not reopen it for a new failure', text => {
-      const state = createSentenceDocument('They works. Last.')
+      const initial = createSentenceDocument('They works. Last.')
+      const state = markSentenceFailed(initial, initial.sentences[0])
       const failure = { sentence: state.sentences[0], message: 'Offline' }
       const { rerender } = render(<SentenceEditor state={state} {...actions} failures={[failure]} />)
       fireEvent.click(failureHighlights()[0])
@@ -107,14 +114,15 @@ describe('SentenceEditor', () => {
       rerender(<SentenceEditor state={next} {...actions} failures={[failure]} />)
       expect(failureHighlights()).toHaveLength(0)
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      rerender(<SentenceEditor state={next} {...actions} failures={[{ sentence: next.sentences[0], message: 'New failure' }]} />)
+      rerender(<SentenceEditor state={markSentenceFailed(next, next.sentences[0])} {...actions}
+        failures={[{ sentence: next.sentences[0], message: 'New failure' }]} />)
       expect(failureHighlights()).toHaveLength(1)
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     },
   )
 
   it('closes removed failures without reopening on retry failure or switching to a suggestion card', () => {
-    const state = createSentenceDocument('They works.')
+    const state = failAll(createSentenceDocument('They works.'))
     const failures = [{ sentence: state.sentences[0], message: 'Offline' }]
     const { rerender } = render(<SentenceEditor state={state} {...actions} failures={failures} />)
     fireEvent.click(failureHighlights()[0])

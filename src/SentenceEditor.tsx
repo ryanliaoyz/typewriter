@@ -31,10 +31,10 @@ function reviewsFor({ state, failures }: Props): Review[] {
   const reviews: Review[] = []
   for (const record of state.sentences) {
     if (record.status === 'suggestion') reviews.push({ kind: 'suggestion', record })
-    else {
+    else if (record.status === 'failed') {
+      // The record's status decides; the failure only supplies its message.
       const failure = byId.get(record.id)
-      if (record.status === 'idle' && failure?.sentence.version === record.version &&
-        failure.sentence.text === record.text) reviews.push({ kind: 'failure', record, failure })
+      if (failure?.sentence.version === record.version) reviews.push({ kind: 'failure', record, failure })
     }
   }
   return reviews

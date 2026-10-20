@@ -11,7 +11,7 @@ export type SentenceCheckResult =
 export type SentenceRecord = SentenceSegment & {
   readonly id: string
   readonly version: number
-} & (SentenceCheckResult | { readonly status: 'idle' | 'rejected', readonly suggestion?: never })
+} & (SentenceCheckResult | { readonly status: 'idle' | 'rejected' | 'failed', readonly suggestion?: never })
 
 export type SuggestionCapture = Pick<SentenceRecord, 'id' | 'version' | 'text'> & {
   readonly suggestion: string
@@ -46,6 +46,37 @@ export function rejectSentenceSuggestion(
   const { suggestion: _suggestion, ...rest } = record
   return { ...previous, sentences: previous.sentences.map((sentence) =>
     sentence === record ? { ...rest, status: 'rejected' } : sentence) }
+}
+
+/** Move a current occurrence between unchecked and failed; stale captures change nothing. */
+function changeCheckStatus(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+  from: 'idle' | 'failed',
+  to: 'idle' | 'failed',
+): SentenceDocumentState {
+  const record = previous.sentences.find((sentence) => sentence.id === checked.id &&
+    sentence.version === checked.version && sentence.text === checked.text && sentence.status === from)
+  if (!record) return previous
+  const { suggestion: _suggestion, ...rest } = record
+  return { ...previous, sentences: previous.sentences.map((sentence) =>
+    sentence === record ? { ...rest, status: to } : sentence) }
+}
+
+/** A failed check stays unchecked and is not scheduled again until retried or edited. */
+export function markSentenceFailed(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+): SentenceDocumentState {
+  return changeCheckStatus(previous, checked, 'idle', 'failed')
+}
+
+/** Return a failed occurrence to the unchecked state so the queue checks it again. */
+export function retrySentenceCheck(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+): SentenceDocumentState {
+  return changeCheckStatus(previous, checked, 'failed', 'idle')
 }
 
 export type SentenceDocumentState = {

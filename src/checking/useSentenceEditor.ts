@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { readDraft, readDraftSavedAt, startDraftAutosave } from '../document/draft'
 import type { DraftSession, DraftSummary, SaveStatus } from '../document/draft'
-import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, rejectedOccurrences, restoreSentenceDocument, updateSentenceDocument } from '../document/sentences'
+import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, markSentenceFailed, rejectedOccurrences, restoreSentenceDocument, retrySentenceCheck, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
 import { createOllamaChecker, UnusableResponseError } from './ollama'
@@ -9,11 +9,17 @@ import { createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
 import type { DocumentEdit } from '../document/document'
 
+/** Details for a record whose status is `failed`; the record's status is the source of truth. */
 export type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
 
 function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolean {
   return state.sentences.some((record) => record.id === checked.id &&
     record.version === checked.version && record.text === checked.text)
+}
+
+function isFailed(state: SentenceDocumentState, checked: SentenceCheck): boolean {
+  return state.sentences.some((record) => record.id === checked.id && record.version === checked.version &&
+    record.text === checked.text && record.status === 'failed')
 }
 
 /** Own one document session and queue; publish transitions before more work runs. */
@@ -67,16 +73,18 @@ export function useSentenceEditor() {
         sessionQueue.update(next)
       },
       onError: (sentence, error) => {
-        if (isCurrent(current.current, sentence)) {
-          publishFailures([
-            ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
-            {
-              sentence,
-              message: error instanceof Error ? error.message : 'Ollama check failed.',
-              ...(error instanceof UnusableResponseError ? { details: error.details } : {}),
-            },
-          ])
-        }
+        const next = markSentenceFailed(current.current, sentence)
+        if (next === current.current) return
+        // Add the details first so publishing the failed record keeps them.
+        publishFailures([
+          ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
+          {
+            sentence,
+            message: error instanceof Error ? error.message : 'Ollama check failed.',
+            ...(error instanceof UnusableResponseError ? { details: error.details } : {}),
+          },
+        ])
+        publish(next)
       },
     })
     queue.current = sessionQueue
@@ -96,14 +104,15 @@ export function useSentenceEditor() {
     if (next === current.current) return
     current.current = next
     setState(next)
-    publishFailures(currentFailures.current.filter((failure) => isCurrent(next, failure.sentence)))
+    publishFailures(currentFailures.current.filter((failure) => isFailed(next, failure.sentence)))
     queue.current?.update(next)
   }
 
-  /** False when the failure is stale or the queue cannot retry it, so its card stays open. */
+  /** Unchecking a current failure lets the queue check it again; false for stale captures. */
   function retry(sentence: SentenceCheck): boolean {
-    if (!isCurrent(current.current, sentence) || !queue.current?.retry(sentence)) return false
-    publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
+    const next = retrySentenceCheck(current.current, sentence)
+    if (next === current.current) return false
+    publish(next)
     return true
   }
 

@@ -163,7 +163,7 @@ it and retain prefix/suffix inference. State has `document`,
 the segment's `start`, `end`, `text`, and `complete` fields plus:
 
 ```ts
-{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' | 'rejected' }
+{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' | 'rejected' | 'failed' }
 ```
 
 - New occurrences start at version 1 with independent IDs, including duplicates.
@@ -250,6 +250,14 @@ content edits, deletion, splits, and merges do not resurrect old dismissals.
 The queue schedules only `idle` records, so rejected versions
 do not get rechecked automatically (invariants 5–6 and 9).
 
+`markSentenceFailed(state, capture)` marks a current, still-unchecked occurrence
+`failed` after an error; `retrySentenceCheck(state, capture)` returns a current failed
+occurrence to `idle`. Both return the previous state unchanged for stale captures.
+A failed record is never treated as clean or scheduled automatically. Reconciliation
+keeps `failed` through offset-only moves, and content edits reset the record to
+`idle` like any other change. Failures are not persisted; a restored draft checks
+them again (invariants 4 and 10).
+
 ## Debounced sequential queue
 
 [`src/checking/queue.ts`](../src/checking/queue.ts) is independent of React and
@@ -260,8 +268,8 @@ only `{ id, version, text }` and returns a promise of an already classified
 unit tests inject a fake checker.
 
 - Feed every document or cache transition to `queue.update(state)`. Only complete,
-  unchecked (`idle`) records are eligible; clean, suggestion, and rejected records
-  are skipped.
+  unchecked (`idle`) records are eligible; clean, suggestion, rejected, and failed
+  records are skipped.
 - Actual document edits restart a **400 ms** document-wide debounce. Unchanged
   input and cache-only updates do not restart it. Pending work is reconciled
   immediately, even while waiting for the timer or an active check.
@@ -278,14 +286,14 @@ unit tests inject a fake checker.
   caches results itself; callbacks should not throw.
 - Errors go to `onError`, never become clean results, and do not block other work.
   Current attempted versions are tracked to avoid duplicate requests and automatic
-  retry loops on unchanged idle records. This bookkeeping stores no results or
-   historical versions; an edit permits a new attempt. A separate map tracks only
-   current failed captures, pruned on updates alongside attempted versions.
-- `retry(capture)` accepts only a matching failed version, clears its failed and
-   attempted markers, and appends it to the FIFO tail. It returns whether the retry
-   was accepted. Active, repeated, stale, checked, and disposed retries are ignored.
-   Retries respect the active slot and any edit debounce; otherwise they can start
-   immediately. A failed retry requires another explicit action (invariants 4–6, 10).
+  retry loops on unchanged idle records, such as between an error and the owner
+  marking the record failed. This bookkeeping stores no results or historical
+  versions; an edit, or a record leaving eligibility, permits a new attempt.
+- The queue has no retry operation. The owner retries by returning a failed record
+  to `idle` (`retrySentenceCheck`) and feeding that state to `update`, which appends
+  it to the FIFO tail once. Retries respect the active slot and any edit debounce;
+  otherwise they can start immediately. A failed retry requires another explicit
+  action (invariants 4–6, 10).
 - `getSnapshot()` exposes pending captures, the active capture, and whether the
   debounce timer is running. `dispose()` cancels the timer, clears pending work,
   and suppresses callbacks and further scheduling. It does not cancel an active
@@ -460,13 +468,15 @@ reference is updated before publishing React state, so a model response always
 checks the latest document, including when React batches renders. Successful
 responses use `cacheSentenceResult` and feed the resulting cache state back into
 the queue without restarting the debounce. Stale results are discarded by the
-cache's ID/version/text guard. Error notices are also restricted to matching
-captures; they disappear when the failed occurrence changes or is deleted, not
-when only its offsets move. No failure is stored as clean. Each failure contains
-the captured ID, version, input text, and message, so identical sentences have
-independent notices. Edits prune obsolete failures rather than hiding old notices.
-Retry validates against the latest document and delegates to the queue; an accepted
-retry removes that notice. Another failure restores it, and success clears it.
+cache's ID/version/text guard. An error for a current unchecked capture marks its
+record `failed`; the record's status is the single source of truth. The failure list
+only supplies details (captured ID, version, input text, message, and any raw
+response) for records that are currently `failed`, so identical sentences have
+independent notices. Notices disappear when the failed occurrence changes or is
+deleted, not when only its offsets move. No failure is stored as clean. Retry
+returns a current failed record to `idle` and publishes it, so the queue checks it
+again and the notice is pruned; `retry` returns false for a stale capture. Another
+failure restores the notice, and success clears it.
 Accept/reject also validate against the latest state reference before publication,
 prune obsolete failures, and update the queue. They return whether an action applied.
 Acceptance restarts the normal edit debounce; rejection does not change the text.
@@ -517,7 +527,7 @@ failed occurrence with its input text, error, and a native **Retry** button,
 followed by document length in UTF-16 units, sentence/completion counts, and each
 sentence's ID, version, current end-exclusive range, JSON-escaped text, completion
 flag, and status. Complete sentences can become `clean` or `suggestion` after a
-successful check; failures remain `idle`. Suggestions also appear in raw JSON.
+successful check; failed checks show `failed`. Suggestions also appear in raw JSON.
 Completion means eligible for scheduling, not a grammar-check
 result. This read-only view consumes session state without a separate cache or
 segmentation pipeline (invariants 1 and 2).
@@ -579,12 +589,12 @@ unmarked editor text also dismisses the card. Accept/reject send the displayed
 versioned capture through the existing session guards. Reject and Close do not
 change document text. The same interaction works in development and production.
 
-Failure marks are derived by joining failures to current unchecked records by
-occurrence ID, version, and input text; they use current offsets rather than
-captured ranges. Their card shows the sentence, error reason, and **Retry**, with
+Failure marks are shown for records whose status is `failed`, using the failure
+details with the same occurrence ID and version; they use current offsets rather
+than captured ranges. Their card shows the sentence, error reason, and **Retry**, with
 literal text rendering. Retry sends the captured identity/input through the
 session's existing guards and sequential queue, closes the card, and restores
-editor focus. An accepted retry removes that failure mark while the work waits
+editor focus; if the session refuses the retry, the card stays open. An accepted retry removes that failure mark while the work waits
 or runs; another failure restores it without reopening the card. No failure
 becomes a clean result, suggestion, or document edit. Raw response diagnostics
 remain in the development inspector (invariants 4–6 and 10).

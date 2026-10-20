@@ -1,38 +1,37 @@
-# Editing-v1 per-case review
+# Second comparison: every case, every model
 
-[Method, model identities, aggregate results, and reproduction](editing-v1-evaluation.md)
-· [Frozen case annotations and rubric](../benchmarks/editing-v1/rubric.md)
+[Summary, method and totals](editing-v1-evaluation.md) ·
+[Benchmark cases and rubric](../benchmarks/editing-v1/rubric.md)
 
-Cases retain the benchmark's G/C/N/P IDs. Quoted outputs below are literal model
-text. Differences between repetitions are shown explicitly rather than choosing
-the better result. The matrix reviews every case; evidence notes focus on
-failures and uncertain cases. Full response envelopes/timings remain in the local
-raw traces identified in the companion report, not in this document.
+This page records how each of the 60 benchmark cases came out for each model in the
+[second comparison](editing-v1-evaluation.md), and why. It starts with a grid of
+labels, then explains the judgement calls that apply to every model, then gives the
+evidence for each model's failures and uncertain cases. Quoted outputs are the
+model's exact words. The full raw answers stay in the local files named on the
+summary page.
 
-Review labels:
+Case IDs keep the benchmark's letters: **G** grammar, **C** compression (shortening),
+**N** no change expected, **P** pairs of sentences with a subtle difference.
 
-- **OK:** no clear issue for the category's task: required repair for G, useful
-  faithful compression for C, unchanged text for N, preserved meaning for P.
-- **F:** a definite meaning-changing published suggestion.
-- **U:** equivalence or grammatical acceptability needs adjudication; not counted
-  as a faithful success or as a definite harmful suggestion.
-- **M:** required repair/compression missed or incomplete, or grammar not acceptable,
-  without a definite meaning change.
-- **R:** a changed N control with no clear meaning error; still a restraint failure.
-- **W:** withheld after a cycle, limit, unusable response, or transport failure.
+| Label | Meaning |
+| --- | --- |
+| **OK** | Did the job: the required fix for G, a useful faithful shortening for C, exactly unchanged for N, meaning kept for P. |
+| **F** | A published suggestion that clearly changes the meaning. |
+| **U** | Uncertain: whether the meaning or grammar is acceptable needs a human judge. Counted neither as success nor as harm. |
+| **M** | Missed or incomplete fix or shortening, or unacceptable grammar, without a clear meaning change. |
+| **R** | An N sentence was changed without a clear meaning error; still a failure to leave it alone. |
+| **W** | Withheld: the check cycled, ran out of rounds, gave an unusable answer, or hit a network error, so nothing was shown. |
 
-Labels prioritize F, then U, then missed work when several problems occur; notes
-record secondary issues. A faithful P paraphrase may be marked OK despite an
-unnecessary stylistic change, since its primary metric is semantic preservation;
-N controls separately measure exact restraint. These are assistant judgments,
-not certified equivalence. Withheld cases have no final semantic grade; their
-notes can still identify intermediate drift or output-contract problems.
+When several problems apply, the label goes to the worst (F, then U, then missed
+work) and the notes mention the rest. A P sentence reworded faithfully can be OK even
+if the rewording wasn't needed, because P cases measure meaning; N cases are where
+needless changes count. Withheld cases get no final grade, but the notes still record
+problems in their intermediate rounds.
 
-For definite drift, notes identify the earliest meaning-changing pass and whether
-an earlier model candidate was faithful. All pass responses were inspected, not
-just final candidates. The same original input and protected propositions apply
-at every refinement step. When the two repetitions have identical outcomes and
-response texts, one review covers both; otherwise each variant is recorded.
+For a meaning change, the notes say which round introduced it and whether an earlier
+round had been faithful. Every round was read, not just the final one, and always
+compared with the original sentence. Where both runs gave identical answers, one
+review covers both; otherwise each run is described.
 
 ## Complete review matrix
 

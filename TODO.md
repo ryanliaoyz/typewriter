@@ -1,39 +1,58 @@
-# V1 TODO
+# To do
 
-- [x] Scaffold React + TypeScript + Vite with test tooling.
-- [x] Build a plain-text editor with canonical document state.
-- [x] Add `Intl.Segmenter` segmentation and a sentence-completion policy.
-- [x] Implement stable sentence IDs, versioning, and edit reconciliation.
-- [x] Add a development-only inspector for live document and sentence state.
-- [x] Retain clean records; invalidate results only when sentence text changes.
-- [x] Add a 400 ms debounce and a deduplicated queue with concurrency = 1.
-- [x] Streamline the README and move module details to `docs/architecture.md`.
-- [x] Document Ollama as the cross-platform v1 runtime; defer `llama-server` support.
-- [x] Integrate Ollama on Linux, macOS, and Windows using `prompt.txt`, a configurable model/server URL, and a development proxy.
-- [x] Discard stale responses; expose failures with a retry action.
-- [x] Highlight sentences with suggestions and show original/corrected text.
-- [x] Evaluate output-only/stability contracts, tighten conservative editing rules, and withhold unstable suggestions.
-- [x] Enable meaning-preserving compression with bounded refinement to convergence.
-- [x] Implement version-safe accept and per-version reject actions.
-- [x] Remove instructional UI copy and unused hint markup/styles while preserving accessibility.
-- [x] Merge editing and suggestion review into one CodeMirror surface with inline highlights, an anchored review card, and undoable acceptance.
-- [x] Modernize the minimal writing interface with responsive spacing, softer colors, prose typography, and refined suggestion controls.
-- [x] Test duplicates, shifted offsets, splits/merges, stale responses, and queue behavior.
-- [x] Evaluate corrections with `tests.txt` and document runnable setup commands.
-- [x] Add a 60-case annotated editing benchmark with semantic contrast pairs and suite selection.
-- [x] Evaluate newly installed models on editing-v1 against a same-suite baseline and document results.
-- [x] Show failed checks with an amber wavy underline and a version-safe inline Retry card in development and production.
-- [x] Add three-minute local draft autosave during continuous typing, restore on reopen, save deletions, and flush on page hide/reload.
-- [x] Keep each tab's draft separate so tabs never overwrite each other.
-- [x] Add a navigation bar under the header with last save, model, and latency placeholders and an **Open** list for retrieving saved drafts.
-- [x] Show the time of the current draft's last successful save in the navigation bar.
-- [x] Move navigation beside the title, refine its styling, and display the configured model read-only.
-- [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
-- [x] Preserve per-occurrence rejected suggestions across reloads and reopening saved drafts.
-- [x] Fix draft-session review findings: lease fallback without Web Locks, storage cleanup and deletion, open/fork race, open without rewrite, fork save time, legacy migration retry, save-failure status, stale Open list, refused Retry, and failure-list churn.
-- [x] Track failed checks as a `failed` sentence status, retried by returning the record to `idle`, instead of a separate failure map in the queue.
+## Version 1
+
+Everything needed to start writing with Typewriter every day.
+
+### Editor
+
+- [x] Set up the project (React, TypeScript, Vite) with tests.
+- [x] A plain-text editor that keeps your text exactly as typed.
+- [x] Split text into sentences with the browser, and decide when a sentence is finished.
+- [x] Give every sentence a lasting ID and a version that goes up when its words change, and keep them correct through edits.
+- [x] A development-only Debug panel showing what the app tracks for each sentence.
+- [x] One editor surface with inline highlights, a review card next to the sentence, and undoable accepts.
+- [x] A simple, calm writing layout with comfortable type, spacing and colours.
+- [x] No instruction text in the interface, while staying accessible.
+
+### Checking with a model
+
+- [x] A queue that waits 400 ms after typing and checks one sentence at a time, without duplicates.
+- [x] Keep results for sentences that haven't changed; drop them when a sentence's words change.
+- [x] Connect to Ollama on Linux, macOS and Windows, using `prompt.txt`, a configurable model and server, and a development proxy.
+- [x] Ignore answers for sentences that changed while they were being checked.
+- [x] Ask the model again until its answer stops changing (up to five rounds), and hold back answers that never settle.
+- [x] Shorten wordy writing while keeping the full meaning.
+- [x] Highlight suggestions and show the original next to the suggestion.
+- [x] Accept and reject that only apply to the version you saw.
+- [x] Show failed checks with an amber wavy underline and a Retry card, in development and in the built app.
+- [x] Track a failed check as a `failed` status on the sentence; Retry simply sets it back to unchecked.
+- [x] Use Gemma 4 E4B (`gemma4:e4b`) as the default model, and keep the model comparisons in `docs/`.
+
+### Drafts
+
+- [x] Save the draft every three minutes, even while typing, and when leaving or reloading the page; restore it when you come back.
+- [x] Give each browser tab its own draft, so tabs never overwrite each other.
+- [x] A bar next to the title with the last save time, the model, a Latency placeholder, and **Open** to switch to another saved draft.
+- [x] Remember rejected suggestions across reloads and when reopening a draft.
+- [x] Make drafts safe without Web Locks (plain `http` addresses), clean up and delete old drafts, and show **Not saved** when saving fails.
+
+### Testing and measurement
+
+- [x] Tests for duplicate sentences, moved text, splits and merges, stale answers, and the queue.
+- [x] Measure models on the 37 sentences in `tests.txt` and document how to run it.
+- [x] A 60-case benchmark with pairs of sentences that differ subtly in meaning.
+- [x] Compare newly installed models on that benchmark and document the results.
+
+### Documentation
+
+- [x] Keep the README short and put module details in `docs/architecture.md`.
+- [x] Document Ollama as the v1 model server; leave `llama-server` for later.
+- [x] Rewrite the documentation in plain language.
+- [x] Release the code under the MIT License.
 
 ## Later
 
-- [ ] Add and test `llama-server` as an alternative runtime in a later version.
-- [ ] Add deterministic word-level diffs and finer highlights.
+- [ ] Show real numbers in the Latency slot.
+- [ ] Support and test `llama-server` as an alternative to Ollama.
+- [ ] Highlight the changed words, not just the whole sentence, using a local word-by-word comparison.

@@ -1,4 +1,4 @@
-export const DEFAULT_MODEL = 'gemma2:9b-instruct-q4_K_M'
+export const DEFAULT_MODEL = 'gemma4:e4b'
 export const DEFAULT_SERVER_URL = 'http://127.0.0.1:11434'
 export const MODEL_PROXY_PATH = '/ollama'
 

@@ -1,18 +1,32 @@
-# Per-case model review
+# First comparison: every sentence, every model
 
-[Method, reproduction, and aggregate results](evaluation.md)
+[Summary, method and totals](evaluation.md)
 
-Review labels describe the final published suggestion, not whether it converged:
-**OK** = no clear grammar/fidelity problem observed; **F** = identifiable meaning
-change; **U** = uncertain equivalence, residual wording, or emphasis worth human
-review; **R** = needless rewriting/weak compression, without a clear meaning
-error; **W** = withheld by the checker. OK is not a proof of equivalence. Counts
-are descriptive reviewer judgments, not exact-output tests.
+This page lists what each model did with each of the 37 test sentences in the
+[first comparison](evaluation.md), and how the result was judged. It's the
+evidence behind the totals on that page.
 
-`sample-NN` maps to the corresponding paragraph in unchanged `tests.txt`. Other
-IDs map to `scripts/evaluation-cases.mjs`. “Unchanged” means literal original
-text. Both full repetitions are reviewed; differing final results are called out
-explicitly. Pass counts include the unchanged confirmation request.
+**How to read the tables**
+
+- **Case:** `sample-NN` is paragraph NN of [`tests.txt`](../tests.txt); other names
+  are defined in [`scripts/evaluation-cases.mjs`](../scripts/evaluation-cases.mjs).
+- **Passes:** how many requests the check took, including the final round that
+  confirmed nothing more changed.
+- **Published text:** the suggestion you would have seen. "Unchanged" means the
+  model returned the sentence exactly as written.
+- **Review:** the label, then a short reason.
+
+| Label | Meaning |
+| --- | --- |
+| **OK** | No clear grammar or meaning problem seen. (Not a proof that nothing changed.) |
+| **F** | The suggestion clearly changes the meaning. |
+| **U** | Uncertain: wording or emphasis changed in a way a person should judge. |
+| **R** | Needless rewording or weak shortening, without a clear meaning error. |
+| **W** | Withheld: the check didn't settle, so nothing was shown. |
+
+Each model ran the whole set twice. Where both runs gave the same result, one row
+covers both; differences are called out. These are one reviewer's judgements, not
+exact-answer tests.
 
 ## Qwen 3.5 9B Q4_K_M
 

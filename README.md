@@ -5,7 +5,7 @@ write, a local language model (through [Ollama](https://ollama.com)) reads each
 finished sentence and suggests a corrected or tighter version that keeps your
 meaning. Nothing changes until you accept a suggestion.
 
-<img width="800" height="518" alt="demo" src="https://github.com/user-attachments/assets/a5e852b9-eae4-4d8a-87e5-3c624aff1477" />
+<img width="100%" alt="demo" src="https://github.com/user-attachments/assets/d27e9dcb-a582-4b29-b7f4-caaf09d621d5" />
 
 ## What works today
 

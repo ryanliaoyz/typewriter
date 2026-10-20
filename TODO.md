@@ -49,6 +49,7 @@ Everything needed to start writing with Typewriter every day.
 - [x] Keep the README short and put module details in `docs/architecture.md`.
 - [x] Document Ollama as the v1 model server; leave `llama-server` for later.
 - [x] Rewrite the documentation in plain language.
+- [x] Release the code under the MIT License.
 
 ## Later
 

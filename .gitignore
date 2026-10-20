@@ -6,3 +6,4 @@ coverage/
 *.tsbuildinfo
 .env.local
 .env.*.local
+demo.gif

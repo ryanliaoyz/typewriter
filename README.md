@@ -99,5 +99,5 @@ sentence it belongs to, and it is thrown away as soon as you change that sentenc
 - [Second model comparison](docs/editing-v1-evaluation.md) (60 cases, four models),
   its [per-case review](docs/editing-v1-results.md), and the
   [benchmark rubric](benchmarks/editing-v1/rubric.md).
-- [`TODO.md`](TODO.md): what's done and what's planned.
+- [`TODO.md`](TODO.md): planned work.
 - [`LICENSE`](LICENSE): Typewriter is open source under the MIT License.

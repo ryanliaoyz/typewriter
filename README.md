@@ -1,9 +1,15 @@
 # Typewriter
 
-Typewriter is a plain-text writing editor that runs on your own computer. As you
+Typewriter is a plain-text writing editor that runs on your computer. As you
 write, a local language model (through [Ollama](https://ollama.com)) reads each
 finished sentence and suggests a corrected or tighter version that keeps your
 meaning. Nothing changes until you accept a suggestion.
+
+## Demo
+
+
+https://github.com/user-attachments/assets/8d9e5f46-1450-4c1d-a38f-5e1e6ec4f83a
+
 
 ## What works today
 

@@ -320,8 +320,11 @@ setup is needed.
 **In the built app** (`npm run preview` or any static hosting), there's no proxy:
 the page calls Ollama directly. Ollama must then allow the page's exact address
 through its `OLLAMA_ORIGINS` setting (don't use a wildcard, and don't expose
-Ollama to the internet). An `https` page can't call an `http` Ollama, and
-`127.0.0.1` always means the machine running the browser. See Ollama's
+Ollama to the internet). Browsers normally block an `https` page from calling an
+`http` server, but loopback addresses such as `http://127.0.0.1` and
+`http://localhost` are a [mixed-content exception](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Mixed_content#loading_locally_delivered_mixed-resources).
+CORS and browser permission checks still apply; HTTPS hosting hasn't been tested
+here. `127.0.0.1` always means the machine running the browser. See Ollama's
 [configuration guide](https://docs.ollama.com/faq#how-do-i-configure-ollama-server)
 for how to set environment variables on each system, and restart Ollama afterwards.
 
@@ -360,10 +363,12 @@ Temperature is 0, the answer may be up to 2,048 tokens, and `reasoning_effort` i
 
 **Is the answer usable?** It must be a single, completed answer
 (`finish_reason: stop`) with real text, and no error, tool call, refusal or code
-block. New headings such as "Corrected:" or new bullet lists are rejected as
-commentary, unless your sentence already had them. Only spaces at the very start
-and end of the answer are trimmed. These checks catch obviously broken answers,
-not wrong corrections; those still arrive as suggestions for you to judge.
+block. Recognized commentary headings such as "Corrected sentence:" and bullet or
+numbered lists are rejected unless the input already matches the corresponding
+pattern. These are limited pattern checks: "Corrected:" alone isn't recognized
+and can become part of a suggestion. Whitespace at the very start and end of the
+answer is trimmed. These checks catch some broken answers, not all commentary or
+wrong corrections; those can still arrive as suggestions for you to judge.
 
 **Settling the answer:**
 
@@ -504,6 +509,10 @@ how many sentences are complete, and a table of every sentence: ID, version,
 position, text (with whitespace made visible), whether it's complete, and its
 status. **Raw state JSON** shows the whole state, including the latest edit and the
 next-ID counter.
+
+The panel doesn't yet expose the check queue or draft-session internals, despite
+the project's debug-surface requirement. **Raw state JSON** covers the document
+and sentence records only, not the entire editor session.
 
 To see sentence tracking in action:
 

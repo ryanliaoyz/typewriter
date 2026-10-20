@@ -19,10 +19,10 @@ Everything needed to start writing with Typewriter every day.
 
 - [x] A queue that waits 400 ms after typing and checks one sentence at a time, without duplicates.
 - [x] Keep results for sentences that haven't changed; drop them when a sentence's words change.
-- [x] Connect to Ollama on Linux, macOS and Windows, using `prompt.txt`, a configurable model and server, and a development proxy.
+- [x] Connect to Ollama using `prompt.txt`, a configurable model and server, and a development proxy; checked on Linux, not yet on macOS or Windows.
 - [x] Ignore answers for sentences that changed while they were being checked.
 - [x] Ask the model again until its answer stops changing (up to five rounds), and hold back answers that never settle.
-- [x] Shorten wordy writing while keeping the full meaning.
+- [x] Suggest shorter wording with instructions to preserve meaning; every suggestion needs review because models can change meaning.
 - [x] Highlight suggestions and show the original next to the suggestion.
 - [x] Accept and reject that only apply to the version you saw.
 - [x] Show failed checks with an amber wavy underline and a Retry card, in development and in the built app.

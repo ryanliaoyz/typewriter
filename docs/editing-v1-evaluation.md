@@ -268,8 +268,11 @@ Limits of this comparison:
 
 - Only 60 made-up English sentences, with 12 per task and 12 hand-written pairs.
 - The same assistant wrote the benchmark and judged the results, despite hiding
-  model names. Cases involving tense, timing, agreement versus decision, strength of
-  wording and "might/must" need an independent human judge before strong claims.
+  model names. The rubric's prerequisite of independent review of ambiguous cases
+  before model-quality claims was not met. The recommendation is therefore a
+  provisional development choice, not an independently validated ranking. Cases
+  involving tense, timing, agreement versus decision, strength of wording and
+  "might/must" still need an independent human judge.
 - Two runs, one machine, one model order and one setup per model; no confidence
   intervals, no shuffled sentence order, and no control over caching or GPU usage.
 - The five-round settling rule is part of what was tested; single-round quality

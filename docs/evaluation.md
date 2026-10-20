@@ -17,8 +17,10 @@ On 2026-10-18 we ran three local models through the app's real checking code on
 - **Qwen 3 8B was fastest** but rewrote more correct sentences and made more
   meaning errors.
 
-A later, larger [second comparison](editing-v1-evaluation.md) on 60 cases found
-that Gemma 4 E4B does better than all of these; it is now the app's default.
+A later, larger [second comparison](editing-v1-evaluation.md) on 60 cases selected
+Gemma 4 E4B as the app's default among the four configurations tested there. It
+didn't include Qwen 3 8B or this Gemma 2 Q4 configuration, so it doesn't establish
+a ranking against every model here.
 
 ## What was compared
 
@@ -145,8 +147,10 @@ Each line of output is one JSON record:
    round's input, raw answer, HTTP status and time.
 
 The summary refuses incomplete or duplicated runs. It reports counts and timings,
-not quality. A model that cycles or gives unusable answers is a measured result,
-not a script error; only network failures make the command fail. Timings are shown
+not quality. Cycles, pass limits and answers classified as `invalid` are measured
+outcomes and don't make the evaluator exit unsuccessfully. Outcomes classified as
+`error` do: these include network failures, HTTP errors, timeouts and invalid JSON.
+Setup failures also make the command fail. Timings are shown
 both for all checks and for successful ones only, so fast failures can't look like
 fast suggestions. For the 60-case suite it also reports how many "leave unchanged"
 sentences were left unchanged, and whether both halves of a contrast pair got the

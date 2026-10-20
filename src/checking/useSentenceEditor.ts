@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { readDraft, readDraftSavedAt, startDraftAutosave } from '../document/draft'
-import type { DraftSession, DraftSummary } from '../document/draft'
-import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, rejectedOccurrences, restoreSentenceDocument, updateSentenceDocument } from '../document/sentences'
+import type { DraftSession, DraftSummary, SaveStatus } from '../document/draft'
+import { acceptSentenceSuggestion, rejectSentenceSuggestion, cacheSentenceResult, markSentenceFailed, rejectedOccurrences, restoreSentenceDocument, retrySentenceCheck, updateSentenceDocument } from '../document/sentences'
 import type { SentenceDocumentState, SuggestionCapture } from '../document/sentences'
 import { readModelConfig } from './config'
 import { createOllamaChecker, UnusableResponseError } from './ollama'
@@ -9,11 +9,17 @@ import { createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
 import type { DocumentEdit } from '../document/document'
 
-type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
+/** Details for a record whose status is `failed`; the record's status is the source of truth. */
+export type Failure = { readonly sentence: SentenceCheck, readonly message: string, readonly details?: string }
 
 function isCurrent(state: SentenceDocumentState, checked: SentenceCheck): boolean {
   return state.sentences.some((record) => record.id === checked.id &&
     record.version === checked.version && record.text === checked.text)
+}
+
+function isFailed(state: SentenceDocumentState, checked: SentenceCheck): boolean {
+  return state.sentences.some((record) => record.id === checked.id && record.version === checked.version &&
+    record.text === checked.text && record.status === 'failed')
 }
 
 /** Own one document session and queue; publish transitions before more work runs. */
@@ -33,12 +39,12 @@ export function useSentenceEditor() {
   const draft = useRef<DraftSession | null>(null)
   const [draftId, setDraftId] = useState('')
   // Read after the draft so a new tab's ID already exists.
-  const [lastSavedAt, setLastSavedAt] = useState(readDraftSavedAt)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(() => ({ savedAt: readDraftSavedAt(), failed: false }))
 
   useEffect(() => {
     const session = startDraftAutosave(() => ({
       text: current.current.document.text, rejected: rejectedOccurrences(current.current),
-    }), setLastSavedAt)
+    }), setSaveStatus)
     draft.current = session
     return () => {
       session.stop()
@@ -47,6 +53,9 @@ export function useSentenceEditor() {
   }, [])
 
   function publishFailures(next: readonly Failure[]): void {
+    const previous = currentFailures.current
+    // Most edits leave the list unchanged; keep its identity so nothing re-renders.
+    if (next.length === previous.length && next.every((failure, index) => failure === previous[index])) return
     currentFailures.current = next
     setFailures(next)
   }
@@ -64,16 +73,18 @@ export function useSentenceEditor() {
         sessionQueue.update(next)
       },
       onError: (sentence, error) => {
-        if (isCurrent(current.current, sentence)) {
-          publishFailures([
-            ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
-            {
-              sentence,
-              message: error instanceof Error ? error.message : 'Ollama check failed.',
-              ...(error instanceof UnusableResponseError ? { details: error.details } : {}),
-            },
-          ])
-        }
+        const next = markSentenceFailed(current.current, sentence)
+        if (next === current.current) return
+        // Add the details first so publishing the failed record keeps them.
+        publishFailures([
+          ...currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id),
+          {
+            sentence,
+            message: error instanceof Error ? error.message : 'Ollama check failed.',
+            ...(error instanceof UnusableResponseError ? { details: error.details } : {}),
+          },
+        ])
+        publish(next)
       },
     })
     queue.current = sessionQueue
@@ -93,15 +104,16 @@ export function useSentenceEditor() {
     if (next === current.current) return
     current.current = next
     setState(next)
-    publishFailures(currentFailures.current.filter((failure) => isCurrent(next, failure.sentence)))
+    publishFailures(currentFailures.current.filter((failure) => isFailed(next, failure.sentence)))
     queue.current?.update(next)
   }
 
-  function retry(sentence: SentenceCheck): void {
-    if (!isCurrent(current.current, sentence)) return
-    if (queue.current?.retry(sentence)) {
-      publishFailures(currentFailures.current.filter((failure) => failure.sentence.id !== sentence.id))
-    }
+  /** Unchecking a current failure lets the queue check it again; false for stale captures. */
+  function retry(sentence: SentenceCheck): boolean {
+    const next = retrySentenceCheck(current.current, sentence)
+    if (next === current.current) return false
+    publish(next)
+    return true
   }
 
   function accept(capture: SuggestionCapture): boolean {
@@ -124,14 +136,19 @@ export function useSentenceEditor() {
 
   /** Restore another draft's rejections with fresh IDs to exclude previous work. */
   async function openDraft(id: string): Promise<boolean> {
-    const opened = await draft.current?.open(id)
-    if (!opened) return false
-    publish(restoreSentenceDocument(opened.text, opened.rejected, current.current.nextSentenceId))
-    setLastSavedAt(opened.savedAt)
-    publishFailures([])
-    setDraftId(id)
-    return true
+    return await draft.current?.open(id, (opened) => {
+      publish(restoreSentenceDocument(opened.text, opened.rejected, current.current.nextSentenceId))
+      publishFailures([])
+      setDraftId(id)
+    }) ?? false
   }
 
-  return { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft, model: config.model }
+  async function removeDraft(id: string): Promise<boolean> {
+    return await draft.current?.remove(id) ?? false
+  }
+
+  return {
+    state, updateText, failures, retry, accept, reject, draftId, saveStatus,
+    listDrafts, openDraft, removeDraft, model: config.model,
+  }
 }

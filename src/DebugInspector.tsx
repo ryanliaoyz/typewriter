@@ -1,10 +1,13 @@
 import type { SentenceDocumentState } from './document/sentences'
 import { useState } from 'react'
-import type { useSentenceEditor } from './checking/useSentenceEditor'
+import type { Failure } from './checking/useSentenceEditor'
+import type { SentenceCheck } from './checking/queue'
 
 type Props = {
   state: SentenceDocumentState
-} & Partial<Pick<ReturnType<typeof useSentenceEditor>, 'failures' | 'retry'>>
+  failures?: readonly Failure[]
+  retry?: (sentence: SentenceCheck) => boolean
+}
 
 function ResponseDetails({ details }: { details: string }) {
   const [open, setOpen] = useState(false)

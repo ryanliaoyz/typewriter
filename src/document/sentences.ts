@@ -11,7 +11,7 @@ export type SentenceCheckResult =
 export type SentenceRecord = SentenceSegment & {
   readonly id: string
   readonly version: number
-} & (SentenceCheckResult | { readonly status: 'idle' | 'rejected', readonly suggestion?: never })
+} & (SentenceCheckResult | { readonly status: 'idle' | 'rejected' | 'failed', readonly suggestion?: never })
 
 export type SuggestionCapture = Pick<SentenceRecord, 'id' | 'version' | 'text'> & {
   readonly suggestion: string
@@ -48,6 +48,37 @@ export function rejectSentenceSuggestion(
     sentence === record ? { ...rest, status: 'rejected' } : sentence) }
 }
 
+/** Move a current occurrence between unchecked and failed; stale captures change nothing. */
+function changeCheckStatus(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+  from: 'idle' | 'failed',
+  to: 'idle' | 'failed',
+): SentenceDocumentState {
+  const record = previous.sentences.find((sentence) => sentence.id === checked.id &&
+    sentence.version === checked.version && sentence.text === checked.text && sentence.status === from)
+  if (!record) return previous
+  const { suggestion: _suggestion, ...rest } = record
+  return { ...previous, sentences: previous.sentences.map((sentence) =>
+    sentence === record ? { ...rest, status: to } : sentence) }
+}
+
+/** A failed check stays unchecked and is not scheduled again until retried or edited. */
+export function markSentenceFailed(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+): SentenceDocumentState {
+  return changeCheckStatus(previous, checked, 'idle', 'failed')
+}
+
+/** Return a failed occurrence to the unchecked state so the queue checks it again. */
+export function retrySentenceCheck(
+  previous: SentenceDocumentState,
+  checked: Pick<SentenceRecord, 'id' | 'version' | 'text'>,
+): SentenceDocumentState {
+  return changeCheckStatus(previous, checked, 'failed', 'idle')
+}
+
 export type SentenceDocumentState = {
   readonly document: DocumentState
   readonly sentences: readonly SentenceRecord[]
@@ -55,8 +86,8 @@ export type SentenceDocumentState = {
   readonly nextSentenceId: number
 }
 
-function createRecord(segment: SentenceSegment, id: number): SentenceRecord {
-  return { ...segment, id: `sentence-${id}`, version: 1, status: 'idle' }
+function createRecord(segment: SentenceSegment, id: number, status: 'idle' | 'rejected' = 'idle'): SentenceRecord {
+  return { ...segment, id: `sentence-${id}`, version: 1, status }
 }
 
 /** Persist only current rejected occurrences, never cached model output or IDs. */
@@ -70,14 +101,12 @@ export function rejectedOccurrences(state: SentenceDocumentState): readonly Reje
 /** Restore only markers matching native segmentation; draft switches use fresh IDs. */
 export function restoreSentenceDocument(text: string, rejected: readonly RejectedOccurrence[], firstId = 1): SentenceDocumentState {
   const segments = segmentSentences(text)
+  const markers = new Set(rejected.map(({ start, end, text }) => JSON.stringify([start, end, text])))
   return {
     document: createDocument(text),
     nextSentenceId: firstId + segments.length,
-    sentences: segments.map((segment, index) => ({
-      ...segment, id: `sentence-${firstId + index}`, version: 1,
-      status: rejected.some((marker) => marker.start === segment.start && marker.end === segment.end && marker.text === segment.text)
-        ? 'rejected' : 'idle',
-    })),
+    sentences: segments.map((segment, index) => createRecord(segment, firstId + index,
+      markers.has(JSON.stringify([segment.start, segment.end, segment.text])) ? 'rejected' : 'idle')),
   }
 }
 
@@ -86,12 +115,7 @@ function moveRecord(record: SentenceRecord, segment: SentenceSegment): SentenceR
 }
 
 export function createSentenceDocument(text = ''): SentenceDocumentState {
-  const segments = segmentSentences(text)
-  return {
-    document: createDocument(text),
-    sentences: segments.map((segment, index) => createRecord(segment, index + 1)),
-    nextSentenceId: segments.length + 1,
-  }
+  return restoreSentenceDocument(text, [])
 }
 
 /** Cache a classified successful result without changing canonical document text. */

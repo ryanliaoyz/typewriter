@@ -4,13 +4,14 @@ import SentenceEditor from './SentenceEditor'
 import { useSentenceEditor } from './checking/useSentenceEditor'
 
 export default function App() {
-  const { state, updateText, failures, retry, accept, reject, draftId, lastSavedAt, listDrafts, openDraft, model } = useSentenceEditor()
+  const { state, updateText, failures, retry, accept, reject, draftId, saveStatus, listDrafts, openDraft, removeDraft, model } = useSentenceEditor()
 
   return (
     <main>
       <header className="app-header">
         <h1>Typewriter<span className="brand-dot" aria-hidden="true">.</span></h1>
-        <AppNav lastSavedAt={lastSavedAt} model={model} listDrafts={listDrafts} openDraft={openDraft} />
+        <AppNav saveStatus={saveStatus} model={model} listDrafts={listDrafts} openDraft={openDraft}
+          removeDraft={removeDraft} />
       </header>
       {/* A newly opened draft gets a fresh editor, so undo cannot cross drafts. */}
       <SentenceEditor key={draftId} state={state} updateText={updateText} failures={failures} retry={retry} accept={accept} reject={reject} />

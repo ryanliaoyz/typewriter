@@ -54,11 +54,14 @@ prose is never interpreted as metadata. Malformed markers are ignored; unreadabl
 snapshots fall back to legacy text when available. The Open list combines both
 formats without listing a draft twice.
 
-`startDraftAutosave(readDraftState, onSave)` consumes a function that reads the latest
-`{ text, rejected }` snapshot and an optional save callback, and returns a draft session with
-`stop`, `list`, and `open`. Each successful save records its epoch time under
-`typewriter:saved:<tab ID>` and passes it to `onSave`. Skipped and failed writes
-record nothing. `readDraftSavedAt()` returns this tab's recorded time, or null for an
+`startDraftAutosave(readDraftState, onStatus)` consumes a function that reads the latest
+`{ text, rejected }` snapshot and an optional save-status callback, and returns a draft
+session with `stop`, `list`, `open`, and `remove`. Each successful save also records
+its epoch time under `typewriter:saved:<tab ID>` and a one-line preview under
+`typewriter:preview:<tab ID>` (written only when it changes), removes this tab's
+superseded text-only key, and reports `{ savedAt, failed: false }`. A failed snapshot
+write reports `failed: true` with the previous time, and the next successful save
+clears it. Skipped writes report nothing. `readDraftSavedAt()` returns this tab's recorded time, or null for an
 unsaved draft or one saved before times were recorded. A fixed **180,000 ms** interval saves only
 when text or rejection markers differ from the last restored or successfully saved
 snapshot. Rejection-only changes are saved even without typing. Typing never
@@ -69,7 +72,8 @@ Saving is independent of sentence completion and model requests (invariants 1, 8
 and 9).
 
 The same synchronous flush runs when `visibilitychange` reports a hidden document,
-on `pagehide` (including reload/navigation), and on `stop`. Stopping also
+on `pagehide` (including reload/navigation), and on `stop`. Losing up to one
+interval of typing to a browser crash, when none of these run, is by design. Stopping also
 removes the timer and listeners, including during React Strict Mode effect replay.
 The reader uses the session's current-state reference so even an edit immediately
 followed by page hide is saved before React renders it. Becoming visible again
@@ -78,23 +82,39 @@ failed writes stay pending for the next interval or lifecycle flush.
 
 Drafts belong to the current browser profile and page origin (including its
 port). Tabs never write each other's keys, so a stale tab cannot overwrite another
-tab's work. A duplicated tab inherits a copy of sessionStorage; each autosave
-session claims its tab ID with a page-lifetime Web Lock, and a page that finds the
-ID already held forks to a new ID, keeping its copied text and saving it under the
-new key at the next flush. Without Web Locks, the claim is assumed. If
-sessionStorage is unavailable, the ID lasts only for the page load. The first new
-tab adopts a draft saved under the old single `typewriter:draft` key and removes
-it. Duplicated tabs carry their restored rejection markers into the forked snapshot.
+tab's work. A duplicated tab inherits a copy of sessionStorage, so each autosave
+session claims its tab ID for the page lifetime, and a page that finds the ID held
+forks to a new ID. The fork keeps its copied text and rejection markers, saves them
+under the new key at the next flush, and reports a null save time until then. The
+claim uses a Web Lock where available (secure contexts). Elsewhere, such as plain
+HTTP on a LAN address, it uses a lease, `typewriter:lease:<tab ID>`, holding a
+per-page owner token and time. The lease is renewed at every save attempt,
+removed on `pagehide`, and treated as held by another page for seven minutes
+(more than two autosave intervals) after its last renewal, so a crashed page's
+drafts become available again. Before writing, a lease-based session that finds its
+lease taken over by another page forks instead of overwriting; this also covers a
+page restored from the back/forward cache. If sessionStorage is unavailable, the ID
+lasts only for the page load.
 
-`list()` returns a short single-line preview of each saved, non-blank draft other
-than this tab's, leaving out drafts whose Web Lock another open tab holds (from
-`navigator.locks.query()`). `open(id)` claims that draft's lock, saves this tab's
-current snapshot, makes the chosen ID this tab's draft, and releases the previous one.
-The previous draft stays saved and can be opened again, so drafts of closed tabs
-can be recovered. It returns the chosen text, rejection markers, and recorded save time, or null if another tab holds the
-draft, it is missing, or the current snapshot could not be saved. Without Web Locks,
-held drafts cannot be detected, so every other draft is listed and opening is not
-exclusive.
+A tab without its own draft adopts a draft saved under the old single
+`typewriter:draft` key, moving it to its own snapshot and removing the old key. If
+that write fails, the text is still shown and the old key stays until this tab's
+next successful save, or until a reload retries the move.
+
+`list()` returns the stored preview of each saved, non-blank draft other than this
+tab's, leaving out drafts another open page holds (from `navigator.locks.query()`
+or unexpired leases). Drafts saved before previews were stored are parsed once
+for a preview. While listing, it removes unheld drafts that are blank or have only
+leftover metadata, and text-only keys superseded by a snapshot, so storage does not
+grow with abandoned tabs. `remove(id)` permanently deletes another unheld draft's
+keys. `open(id, apply)` waits for this tab's own claim to settle, so a late fork
+cannot move the tab off the opened draft. It claims the chosen draft, saves this
+tab's current snapshot, makes the chosen ID this tab's draft, and releases the
+previous one, which stays saved and can be opened again. It then calls `apply` with
+the chosen text, rejection markers, and save time, and compares later saves with
+the state the editor restored, so opening alone never rewrites the draft. It returns
+false if another page holds the draft, it is missing, or the current snapshot could
+not be saved.
 
 ## Sentence segmentation
 
@@ -143,7 +163,7 @@ it and retain prefix/suffix inference. State has `document`,
 the segment's `start`, `end`, `text`, and `complete` fields plus:
 
 ```ts
-{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' | 'rejected' }
+{ id: string, version: number, status: 'idle' | 'clean' | 'suggestion' | 'rejected' | 'failed' }
 ```
 
 - New occurrences start at version 1 with independent IDs, including duplicates.
@@ -230,6 +250,14 @@ content edits, deletion, splits, and merges do not resurrect old dismissals.
 The queue schedules only `idle` records, so rejected versions
 do not get rechecked automatically (invariants 5–6 and 9).
 
+`markSentenceFailed(state, capture)` marks a current, still-unchecked occurrence
+`failed` after an error; `retrySentenceCheck(state, capture)` returns a current failed
+occurrence to `idle`. Both return the previous state unchanged for stale captures.
+A failed record is never treated as clean or scheduled automatically. Reconciliation
+keeps `failed` through offset-only moves, and content edits reset the record to
+`idle` like any other change. Failures are not persisted; a restored draft checks
+them again (invariants 4 and 10).
+
 ## Debounced sequential queue
 
 [`src/checking/queue.ts`](../src/checking/queue.ts) is independent of React and
@@ -240,8 +268,8 @@ only `{ id, version, text }` and returns a promise of an already classified
 unit tests inject a fake checker.
 
 - Feed every document or cache transition to `queue.update(state)`. Only complete,
-  unchecked (`idle`) records are eligible; clean, suggestion, and rejected records
-  are skipped.
+  unchecked (`idle`) records are eligible; clean, suggestion, rejected, and failed
+  records are skipped.
 - Actual document edits restart a **400 ms** document-wide debounce. Unchanged
   input and cache-only updates do not restart it. Pending work is reconciled
   immediately, even while waiting for the timer or an active check.
@@ -258,14 +286,14 @@ unit tests inject a fake checker.
   caches results itself; callbacks should not throw.
 - Errors go to `onError`, never become clean results, and do not block other work.
   Current attempted versions are tracked to avoid duplicate requests and automatic
-  retry loops on unchanged idle records. This bookkeeping stores no results or
-   historical versions; an edit permits a new attempt. A separate map tracks only
-   current failed captures, pruned on updates alongside attempted versions.
-- `retry(capture)` accepts only a matching failed version, clears its failed and
-   attempted markers, and appends it to the FIFO tail. It returns whether the retry
-   was accepted. Active, repeated, stale, checked, and disposed retries are ignored.
-   Retries respect the active slot and any edit debounce; otherwise they can start
-   immediately. A failed retry requires another explicit action (invariants 4–6, 10).
+  retry loops on unchanged idle records, such as between an error and the owner
+  marking the record failed. This bookkeeping stores no results or historical
+  versions; an edit, or a record leaving eligibility, permits a new attempt.
+- The queue has no retry operation. The owner retries by returning a failed record
+  to `idle` (`retrySentenceCheck`) and feeding that state to `update`, which appends
+  it to the FIFO tail once. Retries respect the active slot and any edit debounce;
+  otherwise they can start immediately. A failed retry requires another explicit
+  action (invariants 4–6, 10).
 - `getSnapshot()` exposes pending captures, the active capture, and whether the
   debounce timer is running. `dispose()` cancels the timer, clears pending work,
   and suppresses callbacks and further scheduling. It does not cancel an active
@@ -419,9 +447,12 @@ one sequential queue, and current failures
 by sentence occurrence. It consumes editor text and optional exact edit ranges, retry and suggestion actions,
 and asynchronous client results, and produces state, `updateText`, `retry`,
 `accept`, and `reject` actions, and a failure list for the UI (invariants 1, 4–6,
-9, and 10). It also produces `listDrafts` and `openDraft` from the draft session,
-plus a `draftId` that changes after each opened draft and `lastSavedAt`, the time of
-this tab's last successful save: restored on load, updated by each save, and
+9, and 10). `retry` returns whether a retry was queued. The failure list keeps its
+identity when an update leaves it unchanged, so ordinary typing does not re-render
+failure consumers. The session also produces `listDrafts`, `openDraft`, and
+`removeDraft` from the draft session, plus a `draftId` that changes after each opened
+draft and `saveStatus`: the time of this tab's last successful save and whether the
+latest save failed. The status is restored on load, updated by each save attempt, and
 replaced by the opened draft's time. An opened draft replaces the
 document with fresh sentence IDs and validated rejection markers, clears failures,
 and feeds the queue like any other publication. IDs advance from the previous
@@ -437,13 +468,15 @@ reference is updated before publishing React state, so a model response always
 checks the latest document, including when React batches renders. Successful
 responses use `cacheSentenceResult` and feed the resulting cache state back into
 the queue without restarting the debounce. Stale results are discarded by the
-cache's ID/version/text guard. Error notices are also restricted to matching
-captures; they disappear when the failed occurrence changes or is deleted, not
-when only its offsets move. No failure is stored as clean. Each failure contains
-the captured ID, version, input text, and message, so identical sentences have
-independent notices. Edits prune obsolete failures rather than hiding old notices.
-Retry validates against the latest document and delegates to the queue; an accepted
-retry removes that notice. Another failure restores it, and success clears it.
+cache's ID/version/text guard. An error for a current unchecked capture marks its
+record `failed`; the record's status is the single source of truth. The failure list
+only supplies details (captured ID, version, input text, message, and any raw
+response) for records that are currently `failed`, so identical sentences have
+independent notices. Notices disappear when the failed occurrence changes or is
+deleted, not when only its offsets move. No failure is stored as clean. Retry
+returns a current failed record to `idle` and publishes it, so the queue checks it
+again and the notice is pruned; `retry` returns false for a stale capture. Another
+failure restores the notice, and success clears it.
 Accept/reject also validate against the latest state reference before publication,
 prune obsolete failures, and update the queue. They return whether an action applied.
 Acceptance restarts the normal edit debounce; rejection does not change the text.
@@ -466,16 +499,22 @@ controls and state data (invariants 1 and 9).
 history cannot cross drafts.
 
 [`src/AppNav.tsx`](../src/AppNav.tsx) is the navigation beside the title within the
-header, wrapping below it on narrow screens. It consumes `lastSavedAt`, `model`,
-`listDrafts`, and `openDraft` and produces a row
+header, wrapping below it on narrow screens. It consumes `saveStatus`, `model`,
+`listDrafts`, `openDraft`, and `removeDraft` and produces a row
 with **Last save**, **Open**, **Model**, and **Latency**. Last save shows a `<time>`
 in local time: the time of day for saves today, plus the date for earlier ones,
-or "—" before any recorded save. Model shows the configured inference tag as
+or "—" before any recorded save. After a failed save it shows **Not saved** in the
+failure color, in a polite live region, with a title explaining that changes stay in
+the tab and saving retries. Model shows the configured inference tag as
 read-only text; Latency remains a "—" placeholder. **Open** lists the saved drafts with
-their previews, or "No other saved drafts." Choosing one opens it and returns
-focus to **Open**; if another tab took it meanwhile, the list refreshes. Escape and
-clicks outside close the list.
-`App` also passes current failure captures and the retry action to the editor.
+their previews, or "No other saved drafts." It opens immediately with "Loading
+drafts…", and a list that arrives after the menu was closed (by **Open**, Escape, or
+a click outside) is discarded. Choosing one opens it and returns
+focus to **Open**; if another tab took it meanwhile, the list refreshes. Each entry
+has a **×** delete button that asks for confirmation, removes the draft, and
+refreshes the list.
+`App` also passes current failure captures and the retry action to the editor. A
+retry that the session refuses keeps the failure card open.
 Failed sentences have amber wavy underlines and an inline error/Retry card in
 development and production/preview. After fixing server setup, retry without
 reloading or changing the draft (invariant 10). The development inspector retains
@@ -488,7 +527,7 @@ failed occurrence with its input text, error, and a native **Retry** button,
 followed by document length in UTF-16 units, sentence/completion counts, and each
 sentence's ID, version, current end-exclusive range, JSON-escaped text, completion
 flag, and status. Complete sentences can become `clean` or `suggestion` after a
-successful check; failures remain `idle`. Suggestions also appear in raw JSON.
+successful check; failed checks show `failed`. Suggestions also appear in raw JSON.
 Completion means eligible for scheduling, not a grammar-check
 result. This read-only view consumes session state without a separate cache or
 segmentation pipeline (invariants 1 and 2).
@@ -550,12 +589,12 @@ unmarked editor text also dismisses the card. Accept/reject send the displayed
 versioned capture through the existing session guards. Reject and Close do not
 change document text. The same interaction works in development and production.
 
-Failure marks are derived by joining failures to current unchecked records by
-occurrence ID, version, and input text; they use current offsets rather than
-captured ranges. Their card shows the sentence, error reason, and **Retry**, with
+Failure marks are shown for records whose status is `failed`, using the failure
+details with the same occurrence ID and version; they use current offsets rather
+than captured ranges. Their card shows the sentence, error reason, and **Retry**, with
 literal text rendering. Retry sends the captured identity/input through the
 session's existing guards and sequential queue, closes the card, and restores
-editor focus. An accepted retry removes that failure mark while the work waits
+editor focus; if the session refuses the retry, the card stays open. An accepted retry removes that failure mark while the work waits
 or runs; another failure restores it without reopening the card. No failure
 becomes a clean result, suggestion, or document edit. Raw response diagnostics
 remain in the development inspector (invariants 4–6 and 10).
@@ -693,7 +732,8 @@ migration, duplicated-tab forking, and recorded save times. [`src/AppNav.test.ts
 covers the shared title/header structure, navigation order, read-only configured
 model matching the inference request in development and production, the latency
 placeholder, the last-save time before and after
-saving and after opening a draft, its date formatting, opening another draft while keeping
+saving and after opening a draft, its date formatting, the **Not saved** state,
+confirmed deletion, dismissing a still-loading list three ways, opening another draft while keeping
 the previous one saved and listed, the empty list and Escape, and leaving out drafts
 another tab holds. App tests verify verbatim reopening
 in development and production, including Unicode and CR/LF whitespace.
@@ -703,8 +743,13 @@ uses mocked HTTP and fake timers to cover rejection-only interval and page-hide
 saves, immediate reload, independent duplicates, Strict Mode, offset/whitespace
 changes, content edits and reversions, deletion/splits/merges, failed-write recovery,
 draft reopening during inference, duplicated-tab forking, legacy JSON-looking prose,
-and malformed markers. [`src/test/draft.ts`](../src/test/draft.ts) reads saved text
-from either storage format for test assertions; it does not interpret legacy prose
+and malformed markers.
+[`src/checking/draft-sessions.test.tsx`](../src/checking/draft-sessions.test.tsx) covers
+lease-based forking, expiry, and takeover without Web Locks; listing around leases;
+cleanup and deletion; stored previews; opening during a pending fork; opening without
+a rewrite; legacy migration after a failed write; save-failure status; and failure-list
+identity. [`src/test/draft.ts`](../src/test/draft.ts) reads saved text
+from either storage format for test assertions, and can fail the next snapshot write; it does not interpret legacy prose
 as JSON or participate in application state (invariants 1 and 9).
 
 Additional editor-to-queue regressions in

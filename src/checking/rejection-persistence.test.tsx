@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { draftStorageKey } from '../document/draft'
 import { useSentenceEditor } from './useSentenceEditor'
+import { failNextSnapshotWrite } from '../test/draft'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -63,14 +64,12 @@ describe('persistent per-occurrence rejections', () => {
     const saved = localStorage.getItem(key)
     const record = editor.result.current.state.sentences[0]
     act(() => { editor.result.current.reject({ ...record, suggestion: record.suggestion! }) })
-    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
-      throw new DOMException('Storage full', 'QuotaExceededError')
-    })
+    const write = failNextSnapshotWrite()
     act(() => { vi.advanceTimersByTime(180_000) })
     expect(localStorage.getItem(key)).toBe(saved)
     act(() => { vi.advanceTimersByTime(180_000) })
     expect(JSON.parse(localStorage.getItem(key)!).rejected).toEqual([{ start: 0, end: 11, text: 'They works.' }])
-    expect(editor.result.current.lastSavedAt).toBe(Date.now() - 400)
+    expect(editor.result.current.saveStatus.savedAt).toBe(Date.now() - 400)
     write.mockRestore()
   })
 

@@ -30,6 +30,8 @@
 - [x] Move navigation beside the title, refine its styling, and display the configured model read-only.
 - [ ] Adopt `gemma4:e4b` as the default model and retain the model-comparison artifacts.
 - [x] Preserve per-occurrence rejected suggestions across reloads and reopening saved drafts.
+- [x] Fix draft-session review findings: lease fallback without Web Locks, storage cleanup and deletion, open/fork race, open without rewrite, fork save time, legacy migration retry, save-failure status, stale Open list, refused Retry, and failure-list churn.
+- [x] Track failed checks as a `failed` sentence status, retried by returning the record to `idle`, instead of a separate failure map in the queue.
 
 ## Later
 

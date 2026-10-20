@@ -113,8 +113,14 @@ main {
   list-style: none;
 }
 
+.nav-drafts li {
+  display: flex;
+  gap: 0.25rem;
+}
+
 .nav-drafts li button {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 2.25rem;
   border-color: transparent;
   font-weight: 500;
@@ -122,6 +128,18 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.nav-drafts li .nav-delete {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.625rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.nav-error {
+  color: var(--failure-line);
+  font-weight: 600;
 }
 
 .app-header h1 {

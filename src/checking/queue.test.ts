@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cacheSentenceResult, createSentenceDocument, updateSentenceDocument } from '../document/sentences'
+import { cacheSentenceResult, createSentenceDocument, markSentenceFailed, retrySentenceCheck, updateSentenceDocument } from '../document/sentences'
 import type { SentenceCheckResult } from '../document/sentences'
 import { CHECK_DEBOUNCE_MS, createSentenceQueue } from './queue'
 import type { SentenceCheck } from './queue'
@@ -38,7 +38,7 @@ describe('debounced sequential sentence queue', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('retries once at the FIFO tail, respecting active work and edit debounce', async () => {
+  it('retries a failed record returned to idle once, at the FIFO tail, respecting active work and edit debounce', async () => {
     const { queue, check, requests } = harness()
     let state = createSentenceDocument('First. Second. Third.')
     const failed = state.sentences[0]
@@ -47,10 +47,12 @@ describe('debounced sequential sentence queue', () => {
     requests[0].reject(new Error('offline'))
     await vi.advanceTimersByTimeAsync(0)
     expect(check).toHaveBeenCalledTimes(2)
-    state = updateSentenceDocument(state, '  First. Second. Third.')
+    state = markSentenceFailed(updateSentenceDocument(state, '  First. Second. Third.'), failed)
     queue.update(state)
-    expect(queue.retry(failed)).toBe(true)
-    expect(queue.retry(failed)).toBe(false)
+    expect(queue.getSnapshot().pending.map((sentence) => sentence.text)).toEqual(['Third.'])
+    state = retrySentenceCheck(state, failed)
+    queue.update(state)
+    queue.update(state)
     expect(queue.getSnapshot().pending.map((sentence) => sentence.text)).toEqual(['Third.', 'First.'])
     requests[1].resolve({ status: 'clean' })
     await vi.advanceTimersByTimeAsync(399)
@@ -64,7 +66,7 @@ describe('debounced sequential sentence queue', () => {
     queue.dispose()
   })
 
-  it.each(['Changed.', '', 'First. Second.'])('rejects stale retries after replacing First. with %s', async (text) => {
+  it.each(['Changed.', '', 'First. Second.'])('cannot retry a stale failure after replacing First. with %s', async (text) => {
     const { queue, requests } = harness()
     const state = createSentenceDocument('First.')
     const failed = state.sentences[0]
@@ -72,13 +74,13 @@ describe('debounced sequential sentence queue', () => {
     await vi.advanceTimersByTimeAsync(400)
     requests[0].reject(new Error('offline'))
     await vi.advanceTimersByTimeAsync(0)
-    // A changed/deleted occurrence or an explicitly checked record is ineligible.
-    let next = updateSentenceDocument(state, text)
+    // A changed/deleted occurrence or an explicitly checked record is no longer failed.
+    let next = updateSentenceDocument(markSentenceFailed(state, failed), text)
     if (text === 'First. Second.') next = cacheSentenceResult(next, failed, { status: 'clean' })
+    expect(retrySentenceCheck(next, failed)).toBe(next)
     queue.update(next)
-    expect(queue.retry(failed)).toBe(false)
+    expect(queue.getSnapshot().pending.some((sentence) => sentence.id === failed.id && sentence.version === failed.version)).toBe(false)
     queue.dispose()
-    expect(queue.retry(failed)).toBe(false)
   })
 
   it('waits 400 ms and resets the timer for each actual edit', async () => {

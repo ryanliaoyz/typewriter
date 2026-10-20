@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
+import { DEFAULT_MODEL } from '../src/checking/config.ts'
 import { createOllamaChecker, MAX_EDIT_PASSES, REQUEST_TIMEOUT_MS, UnusableResponseError } from '../src/checking/ollamaCore.ts'
 import { loadEvaluationSuite } from './evaluation-suites.mjs'
 
@@ -26,7 +27,7 @@ async function main() {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error('OLLAMA_SERVER_URL must be an HTTP(S) base URL without credentials, query, or fragment.')
   }
-  const model = process.env.OLLAMA_MODEL || 'gemma2:9b-instruct-q4_K_M'
+  const model = process.env.OLLAMA_MODEL || DEFAULT_MODEL
   const repeats = Number(process.env.EVALUATION_REPEATS || 1)
   if (!Number.isInteger(repeats) || repeats < 1 || repeats > 3) throw new Error('EVALUATION_REPEATS must be 1, 2, or 3.')
   const prompt = await readFile(new URL('../prompt.txt', import.meta.url), 'utf8')
